@@ -19,6 +19,9 @@ public abstract class BossModule : IDisposable
 
     private readonly EventSubscriptions _subscriptions;
 
+    public record struct PositionMarker(WPos Position, string Label, uint Color);
+    public readonly List<PositionMarker> PositionMarkers = [];
+
     public Event<BossModule, BossComponent?, string> Error = new();
 
     public PartyState Raid => WorldState.Party;

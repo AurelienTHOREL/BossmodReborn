@@ -153,6 +153,23 @@ public sealed class ConfigUI : IDisposable
         ( "ar ui", "Toggle autorotation ui." ),
     ];
 
+    private static readonly (string, string)[] _multiboxCommands =
+    [
+        ( "mbox", "Toggle the multibox position editor window." ),
+        ( "mbox ui", "Toggle the multibox position editor window." ),
+        ( "mbox syncai", "Sync current AI state (on/off + preset) to all alts. (Main only)" ),
+        ( "mbox syncai on", "Send AI on + preset sync pulse to all alts. (Main only)" ),
+        ( "mbox syncai off", "Send AI off pulse to all alts. (Main only)" ),
+        ( "mbox syncpreset", "Send preset sync pulse to all alts. (Main only)" ),
+        ( "mbox positions", "Toggle position override sync on/off." ),
+        ( "mbox positions on/off", "Enable or disable position override sync." ),
+        ( "mbox diveend", "Toggle DiveEnd invuln sync on/off." ),
+        ( "mbox diveend on/off", "Enable or disable DiveEnd invuln sync." ),
+        ( "mbox de", "Send a one-shot DiveEnd invuln pulse to all alts." ),
+        ( "mbox clear", "Clear all position overrides from the position editor." ),
+        ( "mbox status", "Print current multibox configuration to chat." ),
+    ];
+
     private static readonly (string, string)[] _availableOtherCommands =
     [
         ( "restorerotation", "Toggle restore character orientation after action use setting." ),
@@ -181,6 +198,14 @@ public sealed class ConfigUI : IDisposable
         for (var i = 0; i < 6; ++i)
         {
             ref readonly var text = ref _autorotationCommands[i];
+            ImGui.Text($"/bmr {text.Item1}: {text.Item2}");
+        }
+        ImGui.Separator();
+        ImGui.Text("Multibox commands:");
+        ImGui.Separator();
+        for (var i = 0; i < _multiboxCommands.Length; ++i)
+        {
+            ref readonly var text = ref _multiboxCommands[i];
             ImGui.Text($"/bmr {text.Item1}: {text.Item2}");
         }
         ImGui.Separator();

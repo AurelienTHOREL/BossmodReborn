@@ -13,6 +13,34 @@ using CSActionType = FFXIVClientStructs.FFXIV.Client.Game.ActionType;
 
 namespace BossMod;
 
+public enum ExecuteCommandComplexFlag : uint
+{
+    /// <summary>Low-altitude flying dismount (field). location=target pos, param1=player rotation, param2=unknown (always 1), param3=unknown (always 0)</summary>
+    Dismount = 101,
+    Unk208 = 208,
+    /// <summary>Dive through (field). location=target pos, param1=player rotation</summary>
+    DiveThrough = 209,
+    Unk212 = 212,
+    /// <summary>Place target marker. param1=marker index (0-based)</summary>
+    PlaceMarker = 301,
+    /// <summary>Use emote. param1=emote ID, param3=suppress chat (1=silent, 0=announce)</summary>
+    Emote = 500,
+    /// <summary>Use emote at location (field). location=target pos, param1=emote ID, param2=angle, param4=player rotation</summary>
+    EmoteLocation = 501,
+    /// <summary>Interrupt current emote at location (field). location=target pos, param2=rotation packet</summary>
+    EmoteInterruptLocation = 504,
+    /// <summary>Unknown (field). location=pos, param1=rotation packet, param2=unknown, param3=unknown</summary>
+    Unk603 = 603,
+    /// <summary>Dive end (field). location=target pos, param1=rotation packet, param2=mounted (1=yes, 0=no)</summary>
+    DiveEnd = 607,
+    /// <summary>Invalid dive → respawn at zone start point. location=current pos (seems ignored), param1=unknown (seems ignored)</summary>
+    DiveInvalid = 610,
+    /// <summary>Pet skill. location=destination (move) or param1=pet action ID. For move: pass 0xE0000000 as target.</summary>
+    PetAction = 1800,
+    /// <summary>Adventurer brigade skill. param1=BgcArmyAction ID</summary>
+    BgcArmyAction = 1810,
+}
+
 // extensions and utilities for interacting with game's ActionManager singleton
 // handles following features:
 // 1. automatic action execution (provided by autorotation or ai modules, if enabled); does nothing if no automatic actions are provided
@@ -70,6 +98,10 @@ public sealed unsafe class ActionManagerEx : IDisposable
     private readonly HookAddress<ActionEffectHandler.Delegates.Receive> _processPacketActionEffectHook;
     private readonly HookAddress<AutoAttackState.Delegates.SetImpl> _setAutoAttackStateHook;
 
+    public bool BlockTerritoryTransport { get; set; }
+    private delegate bool ExecuteCommandBlockDelegate(int command, int param1, int param2, int param3, int param4);
+    private readonly HookAddress<ExecuteCommandBlockDelegate> _executeCommandBlockHook;
+
     private delegate void ExecuteCommandGTDelegate(uint commandId, Vector3* position, uint param1, uint param2, uint param3, uint param4);
     private readonly ExecuteCommandGTDelegate _executeCommandGT;
     private DateTime _nextAllowedExecuteCommand;
@@ -102,6 +134,7 @@ public sealed unsafe class ActionManagerEx : IDisposable
         var executeCommandGTAddress = Service.SigScanner.ScanText("E8 ?? ?? ?? ?? EB 3D 8B 93 ?? ?? ?? ??");
         Service.Log($"ExecuteCommandGT address: 0x{executeCommandGTAddress:X}");
         _executeCommandGT = Marshal.GetDelegateForFunctionPointer<ExecuteCommandGTDelegate>(executeCommandGTAddress);
+        _executeCommandBlockHook = new("E8 ?? ?? ?? ?? 8D 46 0A", ExecuteCommandBlockDetour);
 
         var selectTargetAddress = Service.SigScanner.ScanText("E8 ?? ?? ?? ?? 48 8B CE E8 ?? ?? ?? ?? 48 3B C5");
         Service.Log($"SelectTarget address: 0x{selectTargetAddress:X}");
@@ -110,6 +143,7 @@ public sealed unsafe class ActionManagerEx : IDisposable
 
     public void Dispose()
     {
+        _executeCommandBlockHook.Dispose();
         _setAutoAttackStateHook.Dispose();
         _processPacketActionEffectHook.Dispose();
         _useStoneHook.Dispose();
@@ -125,6 +159,21 @@ public sealed unsafe class ActionManagerEx : IDisposable
     {
         _manualQueue.RemoveExpired();
         _manualQueue.FillQueue(_hints.ActionsToExecute);
+    }
+
+    public void ExecuteCommand(int command, int param1 = 0, int param2 = 0, int param3 = 0, int param4 = 0)
+        => _executeCommandBlockHook.Original(command, param1, param2, param3, param4);
+
+    public void ExecuteCommandComplexLocation(
+        ExecuteCommandComplexFlag flag, Vector3 position,
+        uint param1 = 0u, uint param2 = 0u, uint param3 = 0u, uint param4 = 0u)
+        => _executeCommandGT((uint)flag, &position, param1, param2, param3, param4);
+
+    public void TeleportTo(Vector3 position)
+    {
+        var player = GameObjectManager.Instance()->Objects.IndexSorted[0].Value;
+        if (player != null)
+            player->SetPosition(position.X, position.Y, position.Z);
     }
 
     // finish gathering candidate actions for this frame: sort by priority and select best action to execute
@@ -430,6 +479,8 @@ public sealed unsafe class ActionManagerEx : IDisposable
 
         // check whether movement is safe; block movement if not and if desired
         MoveMightInterruptCast &= CastTimeRemaining > 0; // previous cast could have ended without action effect
+        if (BlockTerritoryTransport)
+            MoveMightInterruptCast = false;
         // if we're not casting, but will start soon, moving might interrupt future cast
         if (imminentActionAdj && CastTimeRemaining <= 0 && _inst->AnimationLock < 0.1f && GetAdjustedCastTime(imminentActionAdj) > 0 && !CanMoveWhileCasting(imminentActionAdj) && GCD() < 0.1f)
         {
@@ -495,6 +546,9 @@ public sealed unsafe class ActionManagerEx : IDisposable
     // note: targetId is usually your current primary target (or InvalidEntityId if you don't target anyone), unless you do something like /ac XXX <f> etc
     private bool UseActionDetour(ActionManager* self, CSActionType actionType, uint actionId, ulong targetId, uint extraParam, ActionManager.UseActionMode mode, uint comboRouteId, bool* outOptAreaTargeted)
     {
+        if (BlockTerritoryTransport)
+            return false;
+
         var action = new ActionID((ActionType)actionType, actionId);
         //Service.Log($"[AMEx] UA: {action} @ {targetId:X}: {extraParam} {mode} {comboRouteId}");
         action = NormalizeActionForQueue(action);
@@ -717,6 +771,13 @@ public sealed unsafe class ActionManagerEx : IDisposable
         var (recastElapsed, recastTotal) = recast != null ? (recast->Elapsed, recast->Total) : (0, 0);
         Service.Log($"[AMEx] UAL #{seq} {action} @ {targetID:X} / {Utils.Vec3String(targetPos)}, ALock={_inst->AnimationLock:f3}, CTR={CastTimeRemaining:f3}, CD={recastElapsed:f3}/{recastTotal:f3}, GCD={GCD():f3}");
         ActionRequestExecuted.Fire(new(action, targetID, targetPos, seq, _inst->AnimationLock, castElapsed, castTotal, recastElapsed, recastTotal));
+    }
+
+    private bool ExecuteCommandBlockDetour(int command, int param1, int param2, int param3, int param4)
+    {
+        if (BlockTerritoryTransport && command == 201) // TerritoryTransport
+            return false;
+        return _executeCommandBlockHook.Original(command, param1, param2, param3, param4);
     }
 
     // note: we can't rely on worldstate target id, it might not be updated when this is called

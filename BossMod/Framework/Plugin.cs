@@ -16,6 +16,10 @@ public sealed class Plugin : IDalamudPlugin
 {
     public string Name => "BossMod Reborn";
 
+    public static readonly string BuildNumber = typeof(Plugin).Assembly
+        .GetCustomAttributes<AssemblyMetadataAttribute>()
+        .FirstOrDefault(a => a.Key == "BuildNumber")?.Value ?? "unknown";
+
     private readonly ICommandManager CommandManager;
 
     private readonly RotationDatabase _rotationDB;
@@ -33,6 +37,19 @@ public sealed class Plugin : IDalamudPlugin
     private readonly IPCProvider _ipc;
     private readonly DTRProvider _dtr;
     private readonly MultiboxManager _mbox;
+    private readonly MultiboxConfig _mboxConfig;
+    private readonly PartyRolesConfig _mboxPrc;
+    private IMultiboxSyncWriter? _mboxWriter;
+    private IMultiboxSyncReader? _mboxReader;
+    private IMultiboxAltReportReader? _mboxAltReportReader;
+    private IMultiboxAltReportWriter? _mboxAltReportWriter;
+    private MultiboxAltReport _altReport;
+    private readonly MultiboxPositionEditor _mboxPosEditor;
+    private MultiboxSyncState _mboxState;
+    private byte _mboxPrevDiveEndFlags;
+    private byte _mboxPrevCommandFlags;
+    private bool _pendingDiveEndEnable;
+    private bool _pendingDiveEndDisable;
     private TimeSpan _prevUpdateTime;
     private DateTime _throttleJump;
     private DateTime _throttleInteract;
@@ -100,6 +117,22 @@ public sealed class Plugin : IDalamudPlugin
         _ipc = new(_bossmod, _hints, _rotation, _amex, _movementOverride, _ai, _hintsBuilder.Obstacles);
         _dtr = new(_rotation, _ai);
         _mbox = new(_rotation, _ws);
+        _mboxConfig = Service.Config.Get<MultiboxConfig>();
+        _mboxPrc = Service.Config.Get<PartyRolesConfig>();
+        InitMultiboxSync();
+        _ws.Actors.InCombatChanged.Subscribe(OnCombatChangedMbox);
+        _mboxPosEditor = new(_bossmod, _ws, _rotation,
+            () => _altReport,
+            () => _mboxState.FrameSequence,
+            flags => _mboxState.CommandFlags |= flags,
+            flags =>
+            {
+                _mboxState.DiveEndFlags |= flags;
+                if ((flags & 1) != 0)
+                    _pendingDiveEndEnable = true;
+                if ((flags & 2) != 0)
+                    _pendingDiveEndDisable = true;
+            });
         _wndBossmod = new(_bossmod, _zonemod);
         _wndBossmodHints = new(_bossmod, _zonemod);
         _wndZone = new(_zonemod);
@@ -126,7 +159,14 @@ public sealed class Plugin : IDalamudPlugin
         _wndZone.Dispose();
         _wndBossmodHints.Dispose();
         _wndBossmod.Dispose();
+        _mboxPosEditor.Dispose();
         _configUI.Dispose();
+        _mboxWriter?.Dispose();
+        _mboxReader?.Dispose();
+        if (_mboxAltReportReader is IDisposable altReader && altReader != _mboxWriter as IDisposable)
+            altReader.Dispose();
+        if (_mboxAltReportWriter is IDisposable altWriter && altWriter != _mboxReader as IDisposable)
+            altWriter.Dispose();
         _mbox.Dispose();
         _dtr.Dispose();
         _ipc.Dispose();
@@ -181,6 +221,9 @@ public sealed class Plugin : IDalamudPlugin
                 break;
             case "TOGGLEANTICHEAT":
                 ToggleAnticheat();
+                break;
+            case "MBOX":
+                HandleMultiboxCommand(split);
                 break;
         }
     }
@@ -262,8 +305,11 @@ public sealed class Plugin : IDalamudPlugin
         _hintsBuilder.Update(_hints, PartyState.PlayerSlot, moveImminent);
         _amex.QueueManualActions();
         _rotation.Update(_amex.AnimationLockDelayEstimate, _movementOverride.IsMoving(), Service.Condition[ConditionFlag.DutyRecorderPlayback]);
+        UpdateMultiboxSyncAlt();
         _ai.Update();
         _broadcast.Update();
+        UpdateMultiboxSync();
+        DispatchMultiboxDiveEnd();
         _amex.FinishActionGather();
 
         var uiHidden = Service.GameGui.GameUiHidden || Service.Condition[ConditionFlag.OccupiedInCutSceneEvent] || Service.Condition[ConditionFlag.WatchingCutscene78] || Service.Condition[ConditionFlag.WatchingCutscene];
@@ -457,6 +503,403 @@ public sealed class Plugin : IDalamudPlugin
     private static void OnConditionChanged(ConditionFlag flag, bool value)
     {
         Service.Log($"Condition change: {flag}={value}");
+    }
+
+    private void HandleMultiboxCommand(string[] split)
+    {
+        if (split.Length < 2)
+        {
+            _mboxPosEditor.IsOpen ^= true;
+            if (_mboxPosEditor.IsOpen)
+                _mboxPosEditor.BringToFront();
+            return;
+        }
+
+        switch (split[1].ToUpperInvariant())
+        {
+            case "UI":
+                _mboxPosEditor.IsOpen ^= true;
+                if (_mboxPosEditor.IsOpen)
+                    _mboxPosEditor.BringToFront();
+                break;
+            case "SYNCAI":
+                if (_mboxConfig.Role != MultiboxRole.Main)
+                {
+                    Service.ChatGui.Print("[BMR] Multibox sync commands are only available on Main.");
+                    return;
+                }
+                if (split.Length > 2)
+                {
+                    switch (split[2].ToUpperInvariant())
+                    {
+                        case "ON":
+                            _mboxState.CommandFlags |= 1 | 4;
+                            Service.ChatGui.Print("[BMR] Multibox: sent AI on + preset sync pulse to alts.");
+                            break;
+                        case "OFF":
+                            _mboxState.CommandFlags |= 2;
+                            Service.ChatGui.Print("[BMR] Multibox: sent AI off pulse to alts.");
+                            break;
+                        default:
+                            Service.ChatGui.Print($"[BMR] Unknown syncai option: {split[2]}. Use on/off.");
+                            break;
+                    }
+                }
+                else
+                {
+                    var aiOn = AI.AIManager.Instance?.Beh != null;
+                    _mboxState.CommandFlags |= (byte)(aiOn ? (1 | 4) : 2);
+                    Service.ChatGui.Print($"[BMR] Multibox: sent AI {(aiOn ? "on + preset sync" : "off")} pulse to alts.");
+                }
+                break;
+            case "SYNCPRESET":
+                if (_mboxConfig.Role != MultiboxRole.Main)
+                {
+                    Service.ChatGui.Print("[BMR] Multibox sync commands are only available on Main.");
+                    return;
+                }
+                _mboxState.CommandFlags |= 4;
+                Service.ChatGui.Print($"[BMR] Multibox: sent preset sync pulse ({_rotation.Preset?.Name ?? "none"}).");
+                break;
+            case "POSITIONS":
+                if (split.Length > 2)
+                {
+                    switch (split[2].ToUpperInvariant())
+                    {
+                        case "ON":
+                            _mboxConfig.SyncPositionOverrides = true;
+                            break;
+                        case "OFF":
+                            _mboxConfig.SyncPositionOverrides = false;
+                            break;
+                        default:
+                            Service.ChatGui.Print($"[BMR] Unknown positions option: {split[2]}. Use on/off.");
+                            return;
+                    }
+                }
+                else
+                {
+                    _mboxConfig.SyncPositionOverrides = !_mboxConfig.SyncPositionOverrides;
+                }
+                _mboxConfig.Modified.Fire();
+                Service.ChatGui.Print($"[BMR] Multibox position sync is now {(_mboxConfig.SyncPositionOverrides ? "enabled" : "disabled")}.");
+                break;
+            case "DIVEEND":
+                if (split.Length > 2)
+                {
+                    switch (split[2].ToUpperInvariant())
+                    {
+                        case "ON":
+                            _mboxConfig.SyncDiveEndInvuln = true;
+                            break;
+                        case "OFF":
+                            _mboxConfig.SyncDiveEndInvuln = false;
+                            break;
+                        default:
+                            Service.ChatGui.Print($"[BMR] Unknown diveend option: {split[2]}. Use on/off.");
+                            return;
+                    }
+                }
+                else
+                {
+                    _mboxConfig.SyncDiveEndInvuln = !_mboxConfig.SyncDiveEndInvuln;
+                }
+                _mboxConfig.Modified.Fire();
+                Service.ChatGui.Print($"[BMR] Multibox DiveEnd invuln sync is now {(_mboxConfig.SyncDiveEndInvuln ? "enabled" : "disabled")}.");
+                break;
+            case "DE":
+                if (_amex.BlockTerritoryTransport)
+                {
+                    _mboxState.DiveEndFlags |= 2;
+                    _pendingDiveEndDisable = true;
+                    Service.ChatGui.Print("[BMR] Multibox: DiveEnd OFF sent to all.");
+                }
+                else
+                {
+                    _mboxState.DiveEndFlags |= 1;
+                    _pendingDiveEndEnable = true;
+                    Service.ChatGui.Print("[BMR] Multibox: DiveEnd ON sent to all.");
+                }
+                break;
+            case "CLEAR":
+                _mboxPosEditor.ClearAllPositions();
+                Service.ChatGui.Print("[BMR] Multibox: cleared all position overrides.");
+                break;
+            case "STATUS":
+                Service.ChatGui.Print($"[BMR] Multibox role: {_mboxConfig.Role}");
+                Service.ChatGui.Print($"[BMR] Transport: {_mboxConfig.Transport}");
+                if (_mboxConfig.Transport == MultiboxTransport.TCP)
+                    Service.ChatGui.Print($"[BMR] TCP: {_mboxConfig.TcpAddress}:{_mboxConfig.TcpPort}");
+                else
+                    Service.ChatGui.Print($"[BMR] MMF group: {_mboxConfig.SyncGroupName}");
+                Service.ChatGui.Print($"[BMR] Position sync: {(_mboxConfig.SyncPositionOverrides ? "on" : "off")}");
+                Service.ChatGui.Print($"[BMR] DiveEnd sync: {(_mboxConfig.SyncDiveEndInvuln ? "on" : "off")}");
+                break;
+            default:
+                Service.ChatGui.Print($"[BMR] Unknown mbox command: {split[1]}. Use: ui, syncai, syncpreset, positions, diveend, de, clear, status.");
+                break;
+        }
+    }
+
+    private void DispatchMultiboxDiveEnd()
+    {
+        if (_pendingDiveEndEnable)
+        {
+            _pendingDiveEndEnable = false;
+            if (_rotation.Player is { } p)
+            {
+                _amex.BlockTerritoryTransport = true;
+                _amex.ExecuteCommandComplexLocation(ExecuteCommandComplexFlag.DiveEnd, new Vector3(p.PosRot.X, p.PosRot.Y, p.PosRot.Z));
+                Service.Log("[MultiboxSync] Executed DiveEnd invuln on alt");
+            }
+        }
+
+        if (_pendingDiveEndDisable)
+        {
+            _pendingDiveEndDisable = false;
+            _amex.BlockTerritoryTransport = false;
+            _amex.ExecuteCommand(201, 0);
+            Service.Log("[MultiboxSync] Disabled DiveEnd invuln on alt");
+        }
+    }
+
+    internal static unsafe void ExecuteGameMacro(int number)
+    {
+        if (number is < 0 or > 99)
+            return;
+        var macroModule = FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureMacroModule.Instance();
+        var shellModule = FFXIVClientStructs.FFXIV.Client.UI.Shell.RaptureShellModule.Instance();
+        if (macroModule == null || shellModule == null)
+            return;
+        var macro = macroModule->GetMacro(0, (uint)number);
+        if (macro == null)
+            return;
+        shellModule->ExecuteMacro(macro);
+        Service.Log($"[MultiboxSync] Executed macro #{number}");
+    }
+
+    private void OnCombatChangedMbox(Actor actor)
+    {
+        if (!_mboxConfig.RsrOffOnWipe)
+            return;
+        if (_ws.Party.Members[PartyState.PlayerSlot].InstanceId != actor.InstanceID)
+            return;
+        if (actor.InCombat || !actor.IsDead)
+            return;
+
+        Service.Log("[MultiboxSync] Wipe detected, firing RSR Off");
+        ExecuteGameMacro(_mboxConfig.RsrOffMacroNumber);
+        if (_mboxConfig.Role == MultiboxRole.Main)
+            _mboxState.CommandFlags |= 0x10;
+    }
+
+    private void InitMultiboxSync()
+    {
+        try
+        {
+            switch (_mboxConfig.Role)
+            {
+                case MultiboxRole.Main:
+                    if (_mboxConfig.Transport == MultiboxTransport.TCP)
+                    {
+                        var server = new TcpSyncServer(_mboxConfig.TcpAddress, _mboxConfig.TcpPort);
+                        _mboxWriter = server;
+                        _mboxAltReportReader = server;
+                    }
+                    else
+                    {
+                        _mboxWriter = new MultiboxSyncWriter(_mboxConfig.SyncGroupName);
+                        _mboxAltReportReader = new MultiboxAltReportReader(_mboxConfig.SyncGroupName);
+                    }
+                    break;
+                case MultiboxRole.Alt:
+                    if (_mboxConfig.Transport == MultiboxTransport.TCP)
+                    {
+                        var client = new TcpSyncClient(_mboxConfig.TcpAddress, _mboxConfig.TcpPort);
+                        _mboxReader = client;
+                        _mboxAltReportWriter = client;
+                    }
+                    else
+                    {
+                        _mboxReader = new MultiboxSyncReader(_mboxConfig.SyncGroupName);
+                        _mboxAltReportWriter = new MultiboxAltReportWriter(_mboxConfig.SyncGroupName);
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Service.Log($"[MultiboxSync] Failed to initialize: {ex.Message}");
+        }
+    }
+
+    private void UpdateMultiboxSyncAlt()
+    {
+        if (_mboxConfig.Role != MultiboxRole.Alt || _mboxReader == null)
+            return;
+
+        if (!_mboxReader.TryRead(out var state))
+            return;
+
+        var player = _rotation.Player;
+        if (player == null)
+            return;
+
+        if (_mboxConfig.SyncDiveEndInvuln)
+        {
+            if ((state.DiveEndFlags & 1) != 0 && (_mboxPrevDiveEndFlags & 1) == 0)
+            {
+                _pendingDiveEndEnable = true;
+                Service.Log("[MultiboxSync] DiveEnd enable pulse received");
+            }
+            if ((state.DiveEndFlags & 2) != 0 && (_mboxPrevDiveEndFlags & 2) == 0)
+            {
+                _pendingDiveEndDisable = true;
+                Service.Log("[MultiboxSync] DiveEnd disable pulse received");
+            }
+            _mboxPrevDiveEndFlags = state.DiveEndFlags;
+        }
+
+        var aiOnPulse = (state.CommandFlags & 1) != 0 && (_mboxPrevCommandFlags & 1) == 0;
+        var aiOffPulse = (state.CommandFlags & 2) != 0 && (_mboxPrevCommandFlags & 2) == 0;
+        var presetPulse = (state.CommandFlags & 4) != 0 && (_mboxPrevCommandFlags & 4) == 0;
+        var macroAPulse = (state.CommandFlags & 0x08) != 0 && (_mboxPrevCommandFlags & 0x08) == 0;
+        var macroBPulse = (state.CommandFlags & 0x10) != 0 && (_mboxPrevCommandFlags & 0x10) == 0;
+        var leavePulse = (state.CommandFlags & 0x80) != 0 && (_mboxPrevCommandFlags & 0x80) == 0;
+
+        if (aiOnPulse && AI.AIManager.Instance != null)
+        {
+            var aiCfg = Service.Config.Get<AI.AIConfig>();
+            AI.AIManager.Instance.SwitchToFollow(aiCfg.FollowSlot);
+            Service.Log("[MultiboxSync] AI on pulse received");
+        }
+        if (aiOffPulse)
+        {
+            AI.AIManager.Instance?.SwitchToIdle();
+            Service.Log("[MultiboxSync] AI off pulse received");
+        }
+        if (presetPulse && AI.AIManager.Instance != null)
+        {
+            var presetName = state.GetPresetName();
+            if (!string.IsNullOrEmpty(presetName))
+            {
+                var preset = _rotation.Database.Presets.AllPresets
+                    .FirstOrDefault(p => p.Name == presetName);
+                if (preset != null)
+                {
+                    AI.AIManager.Instance.SetAIPreset(preset);
+                    Service.Log($"[MultiboxSync] Preset sync: applied '{presetName}'");
+                }
+            }
+        }
+        if (macroAPulse)
+            ExecuteGameMacro(state.MacroNumberA);
+        if (macroBPulse)
+            ExecuteGameMacro(state.MacroNumberB);
+        if (leavePulse)
+        {
+            EventFramework.LeaveCurrentContent(false);
+            Service.Log("[MultiboxSync] Leave duty pulse received");
+        }
+
+        _mboxPrevCommandFlags = state.CommandFlags;
+
+        var myContentId = (long)_ws.Party.Members[PartyState.PlayerSlot].ContentId;
+        var mySlot = MultiboxSyncState.FindSlot(myContentId, ref state);
+
+        if (mySlot >= 0)
+        {
+            ref var slotData = ref state.Slot(mySlot);
+
+            var assignment = (PartyRolesConfig.Assignment)slotData.Assignment;
+            var myContentIdUlong = (ulong)myContentId;
+            if (assignment != PartyRolesConfig.Assignment.Unassigned
+                && _mboxPrc[myContentIdUlong] != assignment)
+            {
+                _mboxPrc.Assignments[myContentIdUlong] = assignment;
+                _mboxPrc.Modified.Fire();
+            }
+
+            if (_mboxConfig.SyncPositionOverrides && (slotData.Flags & 1) != 0)
+            {
+                var targetPos = new WPos(slotData.TargetX, slotData.TargetZ);
+                _hints.GoalZones.Add(AIHints.GoalProximity(targetPos, 1f, 100f));
+            }
+        }
+
+        if (mySlot >= 0 && _mboxAltReportWriter != null)
+        {
+            var report = new MultiboxAltReportSlot
+            {
+                ContentId = myContentId,
+                ClassJob = (byte)player.Class,
+                Flags = 0,
+                LastSyncSequence = state.FrameSequence
+            };
+            if (AI.AIManager.Instance?.Beh != null)
+                report.Flags |= 1;
+            if (_rotation.Preset != null && _rotation.Preset != RotationModuleManager.ForceDisable)
+                report.Flags |= 2;
+            report.SetPresetName(_rotation.Preset?.Name);
+            report.SetPlanName(_rotation.Planner?.Plan?.Name);
+            report.SetBuildNumber(BuildNumber);
+            _mboxAltReportWriter.Write(ref report, mySlot);
+        }
+    }
+
+    private unsafe void UpdateMultiboxSync()
+    {
+        if (_mboxConfig.Role != MultiboxRole.Main || _mboxWriter == null)
+            return;
+
+        var player = _ws.Party.Player();
+        if (player == null)
+            return;
+
+        _mboxState.MainContentId = (long)_ws.Party.Members[PartyState.PlayerSlot].ContentId;
+        _mboxState.TerritoryId = (ushort)FFXIVClientStructs.FFXIV.Client.Game.GameMain.Instance()->CurrentTerritoryTypeId;
+
+        var activeModule = _bossmod.ActiveModule;
+        if (activeModule?.StateMachine.ActiveState != null)
+        {
+            _mboxState.PhaseIndex = (byte)Math.Max(0, activeModule.StateMachine.ActivePhaseIndex);
+            _mboxState.StateId = activeModule.StateMachine.ActiveState.ID;
+            _mboxState.StateTime = activeModule.StateMachine.TimeSinceTransition;
+        }
+        else
+        {
+            _mboxState.PhaseIndex = 0;
+            _mboxState.StateId = 0;
+            _mboxState.StateTime = 0;
+        }
+
+        for (var i = 0; i < MultiboxSyncState.MaxSlots; ++i)
+        {
+            ref var slot = ref _mboxState.Slot(i);
+            ref var member = ref _ws.Party.Members[i];
+            slot.ContentId = (long)member.ContentId;
+            slot.Assignment = (byte)_mboxPrc[member.ContentId];
+            slot.Flags = 0;
+        }
+
+        if (_mboxConfig.SyncPositionOverrides)
+            _mboxPosEditor.WritePositionsToState(ref _mboxState, _ws.Party, _mboxPrc);
+
+        _mboxState.ResolutionActive = 0;
+        _mboxState.ResolutionFlags = 0;
+
+        _mboxState.SetPresetName(_rotation.Preset?.Name);
+        _mboxState.MacroNumberA = (byte)Math.Clamp(_mboxConfig.SyncMacroNumber, 0, 99);
+        _mboxState.MacroNumberB = (byte)Math.Clamp(_mboxConfig.RsrOffMacroNumber, 0, 99);
+
+        _mboxState.FrameSequence++;
+        _mboxWriter.Write(ref _mboxState);
+
+        if (_mboxAltReportReader?.TryRead(out var altReport) == true)
+            _altReport = altReport;
+
+        _mboxState.DiveEndFlags = 0;
+        _mboxState.CommandFlags = 0;
     }
 
     public static void GarbageCollection()
