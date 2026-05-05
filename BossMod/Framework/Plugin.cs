@@ -1,7 +1,6 @@
 using BossMod.Autorotation;
 using Dalamud.Common;
 using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Interface;
 using Dalamud.Game.Command;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
@@ -22,6 +21,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
         .GetCustomAttributes<AssemblyMetadataAttribute>()
         .FirstOrDefault(a => a.Key == "BuildNumber")?.Value ?? "unknown";
 
+    private readonly IDalamudPluginInterface _dalamud;
     private readonly ICommandManager CommandManager;
     private readonly string _gameVersion = "unknown";
 
@@ -112,7 +112,6 @@ public sealed class Plugin : IAsyncDalamudPlugin
     {
         //Service.Device = pluginInterface.UiBuilder.Device;
         Service.Condition.ConditionChange += OnConditionChanged;
-        Service.IconFont = UiBuilder.IconFont;
         MultiboxUnlock.Exec();
         Camera.Instance = new();
 
@@ -163,7 +162,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
         _configUI = new(Service.Config, _ws, new DirectoryInfo(replayDir), _rotationDB);
         config.Modified.ExecuteAndSubscribe(() => _wndReplay.UpdateLogDirectory());
         _wndRotation = new(_rotation, _amex, () => OpenConfigUI("Autorotation presets"));
-        _wndDebug = new(_ws, _rotation, _zonemod, _amex, _movementOverride, _hintsBuilder, _dalamud);
+        _wndDebug = new(_ws, _rotation, _zonemod, _amex, _movementOverride, _hintsBuilder, _dalamud, _rsr);
 
         _dalamud.UiBuilder.DisableAutomaticUiHide = true;
         _dalamud.UiBuilder.Draw += DrawUI;
@@ -484,10 +483,10 @@ public sealed class Plugin : IAsyncDalamudPlugin
                 if (cmd.Length <= 2)
                     Service.Log("Specify an autorotation preset name.");
                 else
-                    ParseAutorotationSetCommand([.. cmd.Skip(1)], false);
+                    ParseAutorotationSetCommand(cmd[1..], false);
                 break;
             case "TOGGLE":
-                ParseAutorotationSetCommand(cmd.Length > 2 ? [.. cmd.Skip(1)] : [""], true);
+                ParseAutorotationSetCommand(cmd.Length > 2 ? cmd[1..] : [""], true);
                 break;
             case "UI":
                 _wndRotation.SetVisible(!_wndRotation.IsOpen);
@@ -503,7 +502,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
             return;
         }
 
-        var userInput = string.Join(" ", presetName.Skip(1)).Trim();
+        var userInput = string.Join(" ", presetName, 1, presetName.Length - 1).Trim();
         if (userInput == "null" || string.IsNullOrWhiteSpace(userInput))
         {
             _rotation.Preset = null;
@@ -511,9 +510,16 @@ public sealed class Plugin : IAsyncDalamudPlugin
             return;
         }
         var normalizedInput = userInput.ToUpperInvariant();
-        var preset = _rotation.Database.Presets.AllPresets
-            .FirstOrDefault(p => p.Name.Trim().Equals(normalizedInput, StringComparison.OrdinalIgnoreCase))
-            ?? RotationModuleManager.ForceDisable;
+        Preset? preset = null;
+        foreach (var p in _rotation.Database.Presets.AllPresets)
+        {
+            if (p.Name.Trim().Equals(normalizedInput, StringComparison.OrdinalIgnoreCase))
+            {
+                preset = p;
+                break;
+            }
+        }
+        preset ??= RotationModuleManager.ForceDisable;
         if (preset != null)
         {
             var newPreset = toggle && _rotation.Preset == preset ? null : preset;

@@ -1,4 +1,7 @@
-﻿namespace BossMod;
+﻿using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility.Raii;
+
+namespace BossMod;
 
 [ConfigDisplay(Name = "Action tweaks", Order = 4)]
 public sealed class ActionTweaksConfig : ConfigNode
@@ -51,8 +54,7 @@ public sealed class ActionTweaksConfig : ConfigNode
     [PropertyDisplay("Use actions on mouseover target")]
     public bool PreferMouseover = false;
 
-    [PropertyDisplay("Smart ability targeting", tooltip: "If the usual (mouseover/primary) target is not valid for an action, select the next best target automatically (e.g. co-tank for Shirk)")]
-    public bool SmartTargets = true;
+    public bool SmartTargeting = false;
 
     [PropertyDisplay("Use custom queueing for manually pressed actions", tooltip: "This setting allows better integration with autorotations and will prevent you from triple-weaving or drifting GCDs if you press a healing ability while autorotation is going on")]
     public bool UseManualQueue = false;
@@ -84,4 +86,28 @@ public sealed class ActionTweaksConfig : ConfigNode
     public GroundTargetingMode GTMode = GroundTargetingMode.Manual;
 
     public bool ActivateAnticheat = true;
+
+    private static bool IsRSREnabled()
+    {
+        try
+        {
+            const string rsrName = "Rotation Solver Reborn";
+            foreach (var p in Service.PluginInterface.InstalledPlugins)
+                if ((p.Name.Equals(rsrName, StringComparison.OrdinalIgnoreCase) || p.InternalName.Equals(rsrName, StringComparison.OrdinalIgnoreCase)) && p.IsLoaded)
+                    return true;
+        }
+        catch { }
+        return false;
+    }
+
+    public override void DrawCustom(UITree tree, WorldState ws)
+    {
+        ImGui.AlignTextToFramePadding();
+        UIMisc.HelpMarker("If the usual (mouseover/primary) target is not valid for an action, select the next best target automatically (e.g. co-tank for Shirk)");
+        ImGui.SameLine();
+        var rsrEnabled = IsRSREnabled();
+        using var color = ImRaii.PushColor(ImGuiCol.Text, 0xFF0000FFu, rsrEnabled);
+        if (ImGui.Checkbox("Smart ability targeting (Do not use with RSR)", ref SmartTargeting))
+            Modified.Fire();
+    }
 }
