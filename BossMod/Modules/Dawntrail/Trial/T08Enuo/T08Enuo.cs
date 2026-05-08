@@ -1,6 +1,5 @@
 namespace BossMod.Dawntrail.Trial.T08Enuo;
 
-
 public enum OID : uint
 {
     Enuo = 0x4DB9,
@@ -8,8 +7,8 @@ public enum OID : uint
     Helper = 0x233C,
     _Gen_ = 0x4DB8, // R5.000, x2
     _Gen_Actor1e8536 = 0x1E8536, // R2.000, x1, EventObj type
-    _Gen_Void = 0x4EB4, // R0.850, x0 (spawn during fight), Helper type : Endless chase caster
-    _Gen_Void1 = 0x4DBB, // R0.850, x0 (spawn during fight), Helper type : Endless Chase caster
+    NaughtHuntChaser = 0x4EB4, // R0.850, x0 (spawn during fight), Helper type : Endless chase caster
+    _Gen_Void1 = 0x4DBB, // R0.850, x0 (spawn during fight), Helper type :
     BeaconInTheDark = 0x4DBE,
     UncastShadow = 0x4DBD, // R5.000, x0 (spawn during fight)
     LoomingShadow = 0x4DBC, // R12.500, x0 (spawn during fight)
@@ -17,7 +16,7 @@ public enum OID : uint
     Golbez = 0x4DC0,
 }
 
-public enum AID: uint
+public enum AID : uint
 {
     _AutoAttack_ = 49936, // Enuo->player, no cast, single-target
     Meteorain = 49971, // Enuo->self, no cast, range 40 circle
@@ -112,7 +111,6 @@ public enum TetherID : uint
     _Gen_Tether_chn_z5fd08_0a1 = 392, // _Gen_->Enuo
 }
 
-
 class Meteorain(BossModule module) : Components.RaidwideCast(module, (uint)AID.Meteorain);
 
 sealed class NaughtGrowsAOE(BossModule module) : Components.SimpleAOEs(module, (uint)AID.NaughtGrowsAOE, new AOEShapeCircle(40f));
@@ -121,14 +119,78 @@ sealed class NaughtGrowsAOE(BossModule module) : Components.SimpleAOEs(module, (
 sealed class GazeOfTheVoidCones(BossModule module) : Components.SimpleAOEGroups(module, [(uint)AID.GazeOfTheVoidCones, (uint)AID.GazeOfTheVoid1], new AOEShapeCone(20f, 22.5f.Degrees()), 7, 10);
 
 // Flare marker : tank buster magic damage
-sealed class DeepFreeze(BossModule module) : Components.BaitAwayCast(module, (uint)AID.DeepFreeze,new AOEShapeCircle(8), true, true);
+sealed class DeepFreeze(BossModule module) : Components.BaitAwayCast(module, (uint)AID.DeepFreeze, new AOEShapeCircle(8), true, true);
 
 //Naughthunts
-//TODO: Should update Chaser.target on Haunts Another
-// They will need to be getting line drawn to them and old targets not highlighted.
-// For now only does the first 12 chase AOE.
-sealed class EndlessChase(BossModule module) : Components.StandardChasingAOEs(module, 7f, (uint)AID.EndlessChaseFirst, (uint)AID.EndlessChaseRest, 2.9f, 1.5d, 12, true, (uint)IconID.EndlessChaseIcon);
+/** The solution credit here goes to @Endings.  Any mistakes in implementation from
+ * here belong to @wen.
+*/
+sealed class NaughtHunts(BossModule module) : Components.StandardChasingAOEs(module, new AOEShapeCircle(6f), (uint)AID.EndlessChaseRest, (uint)AID.EndlessChaseRest, 2.9f, 0.7d, 13, icon: (uint)IconID.EndlessChaseIcon, activationDelay: 6d)
+{
+    private int _tethercount = 0;
+    public override void OnTethered(Actor source, in ActorTetherInfo tether)
+    {
+        if (tether.ID == (uint)TetherID.NaughtHuntsTether)
+        {
+            var p = WorldState.Actors.Find(tether.Target);
+            if (_tethercount == 2)
+            {
+                Chasers.Clear();
+            }
+            if (p != null)
+            {
+                Chasers.Add(new(Shape, p, source.Position, 0, MaxCasts, WorldState.FutureTime(ActivationDelay), SecondsBetweenActivations));
+                ++_tethercount;
+            }
+            if (_tethercount == 4)
+            {
+                _tethercount = 0;
+            }
+        }
+    }
 
+    public override void OnActorDestroyed(Actor actor)
+    {
+        if (actor.OID == (uint)OID.NaughtHuntChaser)
+        {
+            Chasers.Clear(); // This'll happen twice per cycle but who cares?
+        }
+    }
+
+    public override void OnCastStarted(Actor caster, ActorCastInfo spell)
+    {
+        if (spell.Action.ID == ActionFirst)
+        {
+            var pos = spell.LocXZ;
+            var minDistance = float.MaxValue;
+
+            var count = Targets.Count;
+            for (var i = 0; i < count; ++i)
+            {
+                var t = Targets[i];
+                var distanceSq = (t.Position - pos).LengthSq();
+                if (distanceSq < minDistance)
+                {
+                    minDistance = distanceSq;
+                }
+            }
+            // Overriding to remove the 'add' behaviour here.
+        }
+    }
+    public override void OnEventCast(Actor caster, ActorCastEvent spell) // Don't count the first action so that we can have the same count between the two.
+    {
+        if (spell.Action.ID is var id && id == ActionRest)
+        {
+            var pos = spell.MainTargetID == caster.InstanceID ? caster.Position.Quantized() : WorldState.Actors.Find(spell.MainTargetID)?.Position ?? spell.TargetXZ;
+            Advance(pos, MoveDistance, WorldState.CurrentTime);
+            if (Chasers.Count == 0 && ResetTargets)
+            {
+                Targets.Clear();
+                NumCasts = 0;
+            }
+        }
+    }
+}
 
 //enshrouded holy - stack marker
 sealed class ShroudedHoly(BossModule module) : Components.StackWithCastTargets(module, (uint)AID.ShroudedHolyStack, 7, 4);
@@ -156,7 +218,7 @@ class ArenaSwitcher : BossComponent
     public override void OnActorCreated(Actor actor)
     {
         if ((OID)actor.OID == OID.BeaconInTheDark)
-           Beacon = actor;
+            Beacon = actor;
     }
 
     public override void OnMapEffect(byte index, uint state)
@@ -176,12 +238,11 @@ class LoomingShadow(BossModule module) : Components.Adds(module, (uint)OID.Loomi
 class Shadows(BossModule module) : Components.Adds(module, (uint)OID.UncastShadow, 1);
 class Beacon(BossModule module) : Components.Adds(module, (uint)OID.BeaconInTheDark, 1, true);
 
-
 class EmptyShadow(BossModule module) : Components.SimpleAOEs(module, (uint)AID.EmptyShadowAOE, new AOEShapeCircle(10f));
 // big explosion For when Looming emptiness spawns. Went a little small: proximity AOE
 class LoomingEmptinessAOE(BossModule module) : Components.SimpleAOEs(module, (uint)AID.LoomingEmptinessAOE, 42f);
 
-class Nothingness(BossModule module) : Components.SimpleAOEs(module, (uint)AID.Nothingness, new AOEShapeRect(100f,2f));
+class Nothingness(BossModule module) : Components.SimpleAOEs(module, (uint)AID.Nothingness, new AOEShapeRect(100f, 2f));
 
 // back to circle arena
 
@@ -198,7 +259,6 @@ sealed class NaughtGrows(BossModule module) : Components.SimpleAOEs(module, (uin
 
 sealed class DimensionZero(BossModule module) : Components.LineStack(module, iconID: (uint)IconID.DimensionZeroIcon, (uint)AID.DimensionZeroRect, 0d, 60f, 4f, 8);
 
-
 [SkipLocalsInit]
 sealed class EnuoStates : StateMachineBuilder
 {
@@ -209,7 +269,7 @@ sealed class EnuoStates : StateMachineBuilder
             .ActivateOnEnter<NaughtGrowsAOE>()
             .ActivateOnEnter<GazeOfTheVoidCones>()
             .ActivateOnEnter<DeepFreeze>()
-            .ActivateOnEnter<EndlessChase>()
+            .ActivateOnEnter<NaughtHunts>()
             .ActivateOnEnter<ShroudedHoly>()
             .ActivateOnEnter<MeltdownSpread>()
             .ActivateOnEnter<MeltdownAOE>()
@@ -240,22 +300,22 @@ sealed class EnuoStates : StateMachineBuilder
     }
 }
 
-[ModuleInfo(BossModuleInfo.Maturity.WIP,
-    StatesType = typeof(EnuoStates),
-    ConfigType = null, // replace null with typeof(EnuoConfig) if applicable
-    ObjectIDType = typeof(OID),
-    ActionIDType = typeof(AID),
-    StatusIDType = null, // replace null with typeof(SID) if applicable
-    TetherIDType = typeof(TetherID),
-    IconIDType = typeof(IconID),
-    PrimaryActorOID = (uint)OID.Enuo,
-    Contributors = "Wen",
-    Expansion = BossModuleInfo.Expansion.Dawntrail,
-    Category = BossModuleInfo.Category.Trial,
-    GroupType = BossModuleInfo.GroupType.CFC,
-    GroupID = 1115u,
-    NameID = 14749u,
-    SortOrder = 1,
-    PlanLevel = 0)]
+[ModuleInfo(BossModuleInfo.Maturity.Contributed,
+StatesType = typeof(EnuoStates),
+ConfigType = null, // replace null with typeof(EnuoConfig) if applicable
+ObjectIDType = typeof(OID),
+ActionIDType = typeof(AID),
+StatusIDType = null, // replace null with typeof(SID) if applicable
+TetherIDType = typeof(TetherID),
+IconIDType = typeof(IconID),
+PrimaryActorOID = (uint)OID.Enuo,
+Contributors = "Wen",
+Expansion = BossModuleInfo.Expansion.Dawntrail,
+Category = BossModuleInfo.Category.Trial,
+GroupType = BossModuleInfo.GroupType.CFC,
+GroupID = 1115u,
+NameID = 14749u,
+SortOrder = 1,
+PlanLevel = 0)]
 [SkipLocalsInit]
 public sealed class Enuo(WorldState ws, Actor primary) : BossModule(ws, primary, new(100f, 100f), new ArenaBoundsCircle(20f));
