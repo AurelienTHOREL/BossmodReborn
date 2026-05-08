@@ -28,6 +28,9 @@ public unsafe struct MultiboxSyncState
     public byte PhaseIndex;         // boss module phase
     public uint StateId;            // state machine state ID
     public float StateTime;         // time within state
+    public float MainX;             // main player's world X (used by TP pulse to land alts on main)
+    public float MainY;             // main player's world Y
+    public float MainZ;             // main player's world Z
 
     public MultiboxSlotData Slot0;
     public MultiboxSlotData Slot1;
@@ -39,7 +42,7 @@ public unsafe struct MultiboxSyncState
     public MultiboxSlotData Slot7;
 
     public byte DiveEndFlags;       // bit 0: enable invuln, bit 1: disable invuln (pulse)
-    public byte CommandFlags;       // bit 0: AI on, bit 1: AI off, bit 2: preset sync, bit 3: macro A, bit 4: macro B, bit 5: TP on, bit 6: TP off, bit 7: leave duty
+    public byte CommandFlags;       // bit 0: AI on, bit 1: AI off, bit 2: preset sync, bit 3: macro A, bit 4: macro B, bit 5: TP-to-main pulse, bit 6: reserved, bit 7: leave duty
     public byte ResolutionActive;   // 1 if resolution engine is driving positions
     public byte ResolutionFlags;    // bit 0: sprint, bit 1: cancel cast, bit 2: stop autoattack (per-slot in SlotData)
     public byte MacroNumberA;       // macro number for "Run Macro" command (0-99)

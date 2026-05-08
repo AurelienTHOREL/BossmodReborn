@@ -99,8 +99,7 @@ public sealed unsafe class ActionManagerEx : IDisposable
     private readonly HookAddress<AutoAttackState.Delegates.SetImpl> _setAutoAttackStateHook;
 
     public bool BlockTerritoryTransport { get; set; }
-    private delegate bool ExecuteCommandBlockDelegate(int command, int param1, int param2, int param3, int param4);
-    private readonly HookAddress<ExecuteCommandBlockDelegate> _executeCommandBlockHook;
+    private readonly HookAddress<GameMain.Delegates.ExecuteCommand> _executeCommandBlockHook;
 
     private delegate void ExecuteCommandGTDelegate(uint commandId, Vector3* position, uint param1, uint param2, uint param3, uint param4);
     private readonly ExecuteCommandGTDelegate _executeCommandGT;
@@ -134,7 +133,7 @@ public sealed unsafe class ActionManagerEx : IDisposable
         var executeCommandGTAddress = Service.SigScanner.ScanText("E8 ?? ?? ?? ?? EB 3D 8B 93 ?? ?? ?? ??");
         Service.Log($"ExecuteCommandGT address: 0x{executeCommandGTAddress:X}");
         _executeCommandGT = Marshal.GetDelegateForFunctionPointer<ExecuteCommandGTDelegate>(executeCommandGTAddress);
-        _executeCommandBlockHook = new("E8 ?? ?? ?? ?? 8D 46 0A", ExecuteCommandBlockDetour);
+        _executeCommandBlockHook = new(GameMain.Addresses.ExecuteCommand, ExecuteCommandBlockDetour);
 
         var selectTargetAddress = Service.SigScanner.ScanText("E8 ?? ?? ?? ?? 48 8B CE E8 ?? ?? ?? ?? 48 3B C5");
         Service.Log($"SelectTarget address: 0x{selectTargetAddress:X}");

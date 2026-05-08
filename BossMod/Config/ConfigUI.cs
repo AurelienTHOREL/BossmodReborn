@@ -166,6 +166,7 @@ public sealed class ConfigUI : IDisposable
         ( "mbox diveend", "Toggle DiveEnd invuln sync on/off." ),
         ( "mbox diveend on/off", "Enable or disable DiveEnd invuln sync." ),
         ( "mbox de", "Send a one-shot DiveEnd invuln pulse to all alts." ),
+        ( "mbox tp", "Teleport all alts onto the Main's current position. (Main only)" ),
         ( "mbox clear", "Clear all position overrides from the position editor." ),
         ( "mbox status", "Print current multibox configuration to chat." ),
     ];

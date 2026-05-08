@@ -1,6 +1,6 @@
 ﻿using BossMod.Autorotation;
+using Dalamud.Game.Chat;
 using Dalamud.Game.Text;
-using Dalamud.Game.Text.SeStringHandling;
 
 namespace BossMod;
 
@@ -21,9 +21,9 @@ internal sealed class MultiboxManager : IDisposable
         Service.ChatGui.ChatMessage -= OnChatMessage;
     }
 
-    private void OnChatMessage(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
+    private void OnChatMessage(IHandleableChatMessage message)
     {
-        if (type == XivChatType.Echo && message.TextValue == "test")
+        if (message.LogKind == XivChatType.Echo && message.Message.TextValue == "test")
         {
             var leaderId = _ws.Party.Members[0].ContentId;
 

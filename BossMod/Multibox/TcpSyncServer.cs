@@ -55,6 +55,14 @@ sealed class TcpSyncServer : IMultiboxSyncWriter, IMultiboxAltReportReader
     {
         lock (_latestLock)
         {
+            // OR pulse flags from any previously-buffered-but-unsent frame so the rate-limited
+            // sender can't coalesce a one-frame pulse away.
+            if (_latestDirty)
+            {
+                ref var pending = ref MemoryMarshal.AsRef<MultiboxSyncState>(_latestBuffer.AsSpan(4));
+                state.DiveEndFlags |= pending.DiveEndFlags;
+                state.CommandFlags |= pending.CommandFlags;
+            }
             MemoryMarshal.Write(_latestBuffer.AsSpan(4), in state);
             _latestDirty = true;
         }

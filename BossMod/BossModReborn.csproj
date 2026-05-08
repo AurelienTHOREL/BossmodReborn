@@ -50,10 +50,15 @@
     <DalamudLibPath>$(DALAMUD_HOME)/</DalamudLibPath>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))'">
+    <DalamudLibPath Condition="'$(DALAMUD_HOME)' != ''">$(DALAMUD_HOME)/</DalamudLibPath>
+    <DalamudLibPath Condition="'$(DALAMUD_HOME)' == ''">$(HOME)/Library/Application Support/XIV on Mac/dalamud/Hooks/dev/</DalamudLibPath>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="DalamudPackager" Version="15.0.0" />
     <PackageReference Include="PInvoke.User32" Version="0.7.124" />
-    <PackageReference Include="TerraFX.Interop.Windows" Version="10.0.26100" />
+    <PackageReference Include="TerraFX.Interop.Windows" Version="10.0.26100.5" />
     <ProjectReference Include="..\FFXIVClientStructs\FFXIVClientStructs\FFXIVClientStructs.csproj">
       <Private>false</Private>
     </ProjectReference>
@@ -102,11 +107,27 @@
     <EmbeddedResource Include="Pathfinding\ObstacleMaps\*" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <BuildTimestamp>$([System.DateTime]::UtcNow.ToString("yyyy-MM-dd HH:mm:ss"))</BuildTimestamp>
+    <BuildNumber>$([System.DateTime]::UtcNow.ToString("yyyyMMdd.HHmmss"))</BuildNumber>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildTimestamp</_Parameter1>
+      <_Parameter2>$(BuildTimestamp)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildNumber</_Parameter1>
+      <_Parameter2>$(BuildNumber)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <Target Name="CleanupOutput" AfterTargets="Build" BeforeTargets="DalamudPackage">
     <ItemGroup>
       <_ExtraOutputFiles Include="$(OutputPath)*" Exclude="$(OutputPath)BossModReborn.*;$(OutputPath)DefaultRotationPresets.json;$(OutputPath)PInvoke.User32.dll" />
     </ItemGroup>
     <Delete Files="@(_ExtraOutputFiles)" />
   </Target>
-  
+
 </Project>

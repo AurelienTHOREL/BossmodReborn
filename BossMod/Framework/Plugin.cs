@@ -21,7 +21,6 @@ public sealed class Plugin : IAsyncDalamudPlugin
         .GetCustomAttributes<AssemblyMetadataAttribute>()
         .FirstOrDefault(a => a.Key == "BuildNumber")?.Value ?? "unknown";
 
-    private readonly IDalamudPluginInterface _dalamud;
     private readonly ICommandManager CommandManager;
     private readonly string _gameVersion = "unknown";
 
@@ -40,14 +39,14 @@ public sealed class Plugin : IAsyncDalamudPlugin
     private IPCProvider _ipc = null!;
     private DTRProvider _dtr = null!;
     private MultiboxManager _mbox = null!;
-    private readonly MultiboxConfig _mboxConfig;
-    private readonly PartyRolesConfig _mboxPrc;
+    private MultiboxConfig _mboxConfig = null!;
+    private PartyRolesConfig _mboxPrc = null!;
     private IMultiboxSyncWriter? _mboxWriter;
     private IMultiboxSyncReader? _mboxReader;
     private IMultiboxAltReportReader? _mboxAltReportReader;
     private IMultiboxAltReportWriter? _mboxAltReportWriter;
     private MultiboxAltReport _altReport;
-    private readonly MultiboxPositionEditor _mboxPosEditor;
+    private MultiboxPositionEditor _mboxPosEditor = null!;
     private MultiboxSyncState _mboxState;
     private byte _mboxPrevDiveEndFlags;
     private bool _pendingDiveEndEnable;
@@ -653,6 +652,15 @@ public sealed class Plugin : IAsyncDalamudPlugin
                     Service.ChatGui.Print("[BMR] Multibox: DiveEnd ON sent to all.");
                 }
                 break;
+            case "TP":
+                if (_mboxConfig.Role != MultiboxRole.Main)
+                {
+                    Service.ChatGui.Print("[BMR] Multibox sync commands are only available on Main.");
+                    return;
+                }
+                _mboxState.CommandFlags |= 0x20;
+                Service.ChatGui.Print("[BMR] Multibox: TP-to-main pulse sent to all alts.");
+                break;
             case "CLEAR":
                 _mboxPosEditor.ClearAllPositions();
                 Service.ChatGui.Print("[BMR] Multibox: cleared all position overrides.");
@@ -668,7 +676,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
                 Service.ChatGui.Print($"[BMR] DiveEnd sync: {(_mboxConfig.SyncDiveEndInvuln ? "on" : "off")}");
                 break;
             default:
-                Service.ChatGui.Print($"[BMR] Unknown mbox command: {split[1]}. Use: ui, syncai, syncpreset, positions, diveend, de, clear, status.");
+                Service.ChatGui.Print($"[BMR] Unknown mbox command: {split[1]}. Use: ui, syncai, syncpreset, positions, diveend, de, tp, clear, status.");
                 break;
         }
     }
@@ -797,6 +805,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
         var presetPulse = (state.CommandFlags & 4) != 0 && (_mboxPrevCommandFlags & 4) == 0;
         var macroAPulse = (state.CommandFlags & 0x08) != 0 && (_mboxPrevCommandFlags & 0x08) == 0;
         var macroBPulse = (state.CommandFlags & 0x10) != 0 && (_mboxPrevCommandFlags & 0x10) == 0;
+        var tpPulse = (state.CommandFlags & 0x20) != 0 && (_mboxPrevCommandFlags & 0x20) == 0;
         var leavePulse = (state.CommandFlags & 0x80) != 0 && (_mboxPrevCommandFlags & 0x80) == 0;
 
         if (aiOnPulse && AI.AIManager.Instance != null)
@@ -828,6 +837,12 @@ public sealed class Plugin : IAsyncDalamudPlugin
             ExecuteGameMacro(state.MacroNumberA);
         if (macroBPulse)
             ExecuteGameMacro(state.MacroNumberB);
+        if (tpPulse)
+        {
+            var dest = new Vector3(state.MainX, state.MainY, state.MainZ);
+            _amex.TeleportTo(dest);
+            Service.Log($"[MultiboxSync] TP-to-main pulse received, teleported to {dest}");
+        }
         if (leavePulse)
         {
             EventFramework.LeaveCurrentContent(false);
@@ -890,6 +905,9 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
         _mboxState.MainContentId = (long)_ws.Party.Members[PartyState.PlayerSlot].ContentId;
         _mboxState.TerritoryId = (ushort)FFXIVClientStructs.FFXIV.Client.Game.GameMain.Instance()->CurrentTerritoryTypeId;
+        _mboxState.MainX = player.PosRot.X;
+        _mboxState.MainY = player.PosRot.Y;
+        _mboxState.MainZ = player.PosRot.Z;
 
         var activeModule = _bossmod.ActiveModule;
         if (activeModule?.StateMachine.ActiveState != null)

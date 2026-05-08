@@ -22,9 +22,9 @@
       },
       "TerraFX.Interop.Windows": {
         "type": "Direct",
-        "requested": "[10.0.26100, )",
-        "resolved": "10.0.26100",
-        "contentHash": "e68m5ATmbNpMO3ojSpFIvtEm+qIGRHCQRBDTH8iUZzhdRfZn8RTzkO1hZxPAqqR9rN5WXA4VCrRgnlGJ1RMqhQ=="
+        "requested": "[10.0.26100.5, )",
+        "resolved": "10.0.26100.5",
+        "contentHash": "xtNbqoZGcc8SoC70ixIPve/2XITl7HuoDgIlCAn2719SwhcquC3SaRIVUMhEodQo1CXeAwxzXGXAgTKMBLhX6Q=="
       },
       "PInvoke.Kernel32": {
         "type": "Transitive",

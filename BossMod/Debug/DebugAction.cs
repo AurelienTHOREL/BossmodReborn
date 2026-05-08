@@ -67,6 +67,22 @@ sealed unsafe class DebugAction : IDisposable
         {
             _amex.FaceDirection((_ws.Party.Player()?.Rotation ?? 0.Degrees()) + 30.Degrees());
         }
+
+        ImGui.TextUnformatted($"Block territory transport: {_amex.BlockTerritoryTransport}");
+        ImGui.SameLine();
+        if (ImGui.Button(_amex.BlockTerritoryTransport ? "DiveEnd OFF" : "DiveEnd ON"))
+        {
+            if (_amex.BlockTerritoryTransport)
+            {
+                _amex.BlockTerritoryTransport = false;
+                _amex.ExecuteCommand(201, 0);
+            }
+            else if (_ws.Party.Player() is { } p)
+            {
+                _amex.BlockTerritoryTransport = true;
+                _amex.ExecuteCommandComplexLocation(ExecuteCommandComplexFlag.DiveEnd, new Vector3(p.PosRot.X, p.PosRot.Y, p.PosRot.Z));
+            }
+        }
     }
 
     public void DrawActionData()

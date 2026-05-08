@@ -11,6 +11,7 @@ sealed class AIController(WorldState ws, ActionManagerEx amex, MovementOverride 
     public float? NaviTargetVertical;
     public bool AllowInterruptingCastByMovement;
     public bool ForceCancelCast;
+    public bool UseTeleport;
 
     private readonly ActionManagerEx _amex = amex;
     private readonly MovementOverride _movement = movement;
