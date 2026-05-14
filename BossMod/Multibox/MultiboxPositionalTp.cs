@@ -89,4 +89,47 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
     {
         // Implemented in Task 8.
     }
+
+    // Standoff = boss hitbox + this offset (yalms). Keeps the alt inside melee range (3y default).
+    private const float StandoffOffset = 1.0f;
+
+    // Computes the desired teleport target for a Flank/Rear positional. Returns false if the
+    // target is unsafe (in ForbiddenZone / out of bounds / hits a temp obstacle) — caller skips.
+    // Rear: single point directly behind boss.
+    // Flank: pick the closer of left/right flank to the alt; no fallback to the other side.
+    private bool TryComputeTarget(Actor player, Actor boss, Positional pos, out Vector3 target)
+    {
+        target = default;
+
+        var bossPos = boss.Position;
+        var bossFacing = boss.Rotation;
+        var standoff = boss.HitboxRadius + StandoffOffset;
+
+        WPos candidate;
+        switch (pos)
+        {
+            case Positional.Rear:
+                candidate = bossPos - bossFacing.ToDirection() * standoff;
+                break;
+            case Positional.Flank:
+                var leftFlank = bossPos + (bossFacing + 90.Degrees()).ToDirection() * standoff;
+                var rightFlank = bossPos + (bossFacing - 90.Degrees()).ToDirection() * standoff;
+                var playerPos = player.Position;
+                candidate = (leftFlank - playerPos).LengthSq() <= (rightFlank - playerPos).LengthSq()
+                    ? leftFlank
+                    : rightFlank;
+                break;
+            default:
+                return false; // Any / Front are filtered upstream
+        }
+
+        // Safety check — same primitive as Hints.IsPositionSafe / IsDashSafe IPCs.
+        if (ActionDefinitions.IsDashDangerous(player.Position, candidate, hints))
+            return false;
+
+        // Preserve player's current Y (height). Boss Y may differ on multi-level arenas;
+        // alt should land on the floor the player is currently standing on.
+        target = new Vector3(candidate.X, player.PosRot.Y, candidate.Z);
+        return true;
+    }
 }
