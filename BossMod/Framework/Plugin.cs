@@ -1,4 +1,5 @@
 using BossMod.Autorotation;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Common;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.Command;
@@ -47,11 +48,20 @@ public sealed class Plugin : IAsyncDalamudPlugin
     private IMultiboxAltReportWriter? _mboxAltReportWriter;
     private MultiboxAltReport _altReport;
     private MultiboxPositionEditor _mboxPosEditor = null!;
+    private MultiboxPositionalTp _mboxPositionalTp = null!;
     private MultiboxSyncState _mboxState;
     private byte _mboxPrevDiveEndFlags;
     private bool _pendingDiveEndEnable;
     private byte _mboxPrevCommandFlags;
     private bool _pendingDiveEndDisable;
+    private bool _mboxTpClickPrevLmb;
+    private bool _mboxTpClickPrevRmb;
+    private bool _mboxTpClickLoggedArm;
+    // After a click-TP fires, schedule a follow-up "TP-to-main" pulse N frames later, using
+    // main's settled (post-terrain-snap) position. Corrects for height/snap drift between the
+    // click target and where main actually ends up.
+    private int _mboxTpFollowupFramesLeft;
+    private const int MboxTpFollowupDelayFrames = 2;
     private TimeSpan _prevUpdateTime;
     private DateTime _throttleJump;
     private DateTime _throttleInteract;
@@ -142,6 +152,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
         _mboxPrc = Service.Config.Get<PartyRolesConfig>();
         InitMultiboxSync();
         _ws.Actors.InCombatChanged.Subscribe(OnCombatChangedMbox);
+        _ws.CurrentZoneChanged.Subscribe(_ => _mboxPositionalTp?.Reset());
         _mboxPosEditor = new(_bossmod, _ws, _rotation,
             () => _altReport,
             () => _mboxState.FrameSequence,
@@ -154,6 +165,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
                 if ((flags & 2) != 0)
                     _pendingDiveEndDisable = true;
             });
+        _mboxPositionalTp = new(_bossmod, _ws, _hints, _amex, _mboxConfig);
         _wndBossmod = new(_bossmod, _zonemod);
         _wndBossmodHints = new(_bossmod, _zonemod);
         _wndZone = new(_zonemod);
@@ -341,6 +353,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
         UpdateMultiboxSyncAlt();
         _ai.Update();
         _broadcast.Update();
+        HandleMultiboxTpClick();
         UpdateMultiboxSync();
         DispatchMultiboxDiveEnd();
         _amex.FinishActionGather();
@@ -354,6 +367,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
         ExecuteHints();
 
         Camera.Instance?.DrawWorldPrimitives();
+        DrawMultiboxTpClickOverlay();
         _prevUpdateTime = DateTime.Now - tsStart;
     }
 
@@ -867,9 +881,20 @@ public sealed class Plugin : IAsyncDalamudPlugin
             ExecuteGameMacro(state.MacroNumberB);
         if (tpPulse)
         {
-            var dest = new Vector3(state.MainX, state.MainY, state.MainZ);
+            var dest = new Vector3(state.TpTargetX, state.TpTargetY, state.TpTargetZ);
             _amex.TeleportTo(dest);
-            Service.Log($"[MultiboxSync] TP-to-main pulse received, teleported to {dest}");
+
+            // This frame's GoalZones / ForcedMovement / NaviTargetPos were computed before the TP
+            // using the pre-TP positions of both alt and master. If we let them apply, MovementOverride
+            // will walk the alt one frame's distance toward the stale master position — a visible
+            // 1-2 yard offset on short TPs. Clear them so the alt stays put for one frame; next
+            // frame the AI re-computes from post-TP positions.
+            _hints.GoalZones.Clear();
+            _hints.ForcedMovement = null;
+            if (AI.AIManager.Instance != null)
+                AI.AIManager.Instance.Controller.NaviTargetPos = null;
+
+            Service.Log($"[MultiboxSync] TP pulse received, teleported to {dest}");
         }
         if (leavePulse)
         {
@@ -877,6 +902,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
             Service.Log("[MultiboxSync] Leave duty pulse received");
         }
 
+        var clickTpHandledThisFrame = (state.CommandFlags & 0x20) != 0 && (_mboxPrevCommandFlags & 0x20) == 0;
         _mboxPrevCommandFlags = state.CommandFlags;
 
         var myContentId = (long)_ws.Party.Members[PartyState.PlayerSlot].ContentId;
@@ -920,6 +946,11 @@ public sealed class Plugin : IAsyncDalamudPlugin
             report.SetBuildNumber(BuildNumber);
             _mboxAltReportWriter.Write(ref report, mySlot);
         }
+
+        if (_mboxConfig.EnablePositionalTp)
+            _mboxPositionalTp.Update(in state, clickTpHandledThisFrame);
+        else
+            _mboxPositionalTp.Reset();
     }
 
     private unsafe void UpdateMultiboxSync()
@@ -936,6 +967,28 @@ public sealed class Plugin : IAsyncDalamudPlugin
         _mboxState.MainX = player.PosRot.X;
         _mboxState.MainY = player.PosRot.Y;
         _mboxState.MainZ = player.PosRot.Z;
+
+        // Default TP target = main's current position. Ctrl+click handler (runs before this,
+        // in DrawUI) may have already set CommandFlags bit 0x20 with a custom target — in that
+        // case do not overwrite. This preserves "TP-to-main" semantics for any code path that
+        // fires bit 0x20 without explicitly choosing a destination.
+        if ((_mboxState.CommandFlags & 0x20) == 0)
+        {
+            _mboxState.TpTargetX = player.PosRot.X;
+            _mboxState.TpTargetY = player.PosRot.Y;
+            _mboxState.TpTargetZ = player.PosRot.Z;
+        }
+
+        // Scheduled follow-up pulse after a click-TP: re-broadcast TP using main's current
+        // (now settled) position so alts correct for any terrain-Y snap discrepancy.
+        if (_mboxTpFollowupFramesLeft > 0 && --_mboxTpFollowupFramesLeft == 0)
+        {
+            _mboxState.TpTargetX = player.PosRot.X;
+            _mboxState.TpTargetY = player.PosRot.Y;
+            _mboxState.TpTargetZ = player.PosRot.Z;
+            _mboxState.CommandFlags |= 0x20;
+            Service.Log($"[MultiboxSync] Click-TP follow-up pulse sent to alts at ({player.PosRot.X:F2}, {player.PosRot.Y:F2}, {player.PosRot.Z:F2}).");
+        }
 
         var activeModule = _bossmod.ActiveModule;
         if (activeModule?.StateMachine.ActiveState != null)
@@ -980,10 +1033,170 @@ public sealed class Plugin : IAsyncDalamudPlugin
         _mboxState.CommandFlags = 0;
     }
 
+    private void HandleMultiboxTpClick()
+    {
+        var anyFeatureOn = _mboxConfig.EnableTpClick || _mboxConfig.EnableDiveEndClick;
+        if (!anyFeatureOn)
+        {
+            _mboxTpClickPrevLmb = false;
+            _mboxTpClickPrevRmb = false;
+            _mboxTpClickLoggedArm = false;
+            return;
+        }
+
+        var io = ImGui.GetIO();
+        // OS-level mouse state — ImGui's MouseDown[] doesn't see clicks when the cursor is in the
+        // bare game world because the game consumes the click for camera/targeting before
+        // Dalamud's ImGui updates. GetAsyncKeyState returns the actual hardware button state.
+        var ctrl = (NativeKeyState.GetAsyncKeyState(NativeKeyState.VK_CONTROL) & 0x8000) != 0 || io.KeyCtrl;
+        var lmbNow = (NativeKeyState.GetAsyncKeyState(NativeKeyState.VK_LBUTTON) & 0x8000) != 0;
+        var rmbNow = (NativeKeyState.GetAsyncKeyState(NativeKeyState.VK_RBUTTON) & 0x8000) != 0;
+        var lmbEdge = lmbNow && !_mboxTpClickPrevLmb;
+        var rmbEdge = rmbNow && !_mboxTpClickPrevRmb;
+        _mboxTpClickPrevLmb = lmbNow;
+        _mboxTpClickPrevRmb = rmbNow;
+
+        if (ctrl && !_mboxTpClickLoggedArm)
+        {
+            Service.Log($"[MultiboxSync] Ctrl-click armed (role={_mboxConfig.Role}, writerReady={_mboxWriter != null}, TpClick={_mboxConfig.EnableTpClick}, DeClick={_mboxConfig.EnableDiveEndClick})");
+            _mboxTpClickLoggedArm = true;
+        }
+        else if (!ctrl && _mboxTpClickLoggedArm)
+        {
+            _mboxTpClickLoggedArm = false;
+        }
+
+        if (!ctrl)
+            return;
+        if (io.WantCaptureMouse)
+            return; // mouse is over a Dalamud window — let it handle the click
+        if (Service.GameGui.GameUiHidden
+            || Service.Condition[ConditionFlag.OccupiedInCutSceneEvent]
+            || Service.Condition[ConditionFlag.WatchingCutscene]
+            || Service.Condition[ConditionFlag.WatchingCutscene78]
+            || Service.Condition[ConditionFlag.BetweenAreas]
+            || Service.Condition[ConditionFlag.BetweenAreas51])
+            return;
+
+        if (_mboxConfig.EnableTpClick && lmbEdge)
+            DoTpClick(io.MousePos);
+        if (_mboxConfig.EnableDiveEndClick && rmbEdge)
+            DoDiveEndClickToggle();
+    }
+
+    private void DoTpClick(Vector2 mousePos)
+    {
+        if (!Service.GameGui.ScreenToWorld(mousePos, out var target))
+        {
+            Service.Log($"[MultiboxSync] TP-click ignored: ScreenToWorld failed (cursor not over terrain) at {mousePos}");
+            return;
+        }
+
+        _amex.TeleportTo(target);
+
+        // Clear stale movement hints for this frame so AI doesn't immediately walk back.
+        _hints.GoalZones.Clear();
+        _hints.ForcedMovement = null;
+        if (AI.AIManager.Instance != null)
+            AI.AIManager.Instance.Controller.NaviTargetPos = null;
+
+        if (_mboxConfig.Role == MultiboxRole.Main && _mboxWriter != null)
+        {
+            _mboxState.TpTargetX = target.X;
+            _mboxState.TpTargetY = target.Y;
+            _mboxState.TpTargetZ = target.Z;
+            _mboxState.CommandFlags |= 0x20;
+            _mboxTpFollowupFramesLeft = MboxTpFollowupDelayFrames;
+            Service.Log($"[MultiboxSync] Ctrl+LMB TP to {target}; pulse sent to alts (follow-up in {MboxTpFollowupDelayFrames} frames).");
+        }
+        else
+        {
+            Service.Log($"[MultiboxSync] Ctrl+LMB TP to {target}; local only (role={_mboxConfig.Role}, writerReady={_mboxWriter != null}).");
+        }
+    }
+
+    private void DoDiveEndClickToggle()
+    {
+        // Toggle local DiveEnd state (mirrors /bmr mbox de). On alts, _mboxState writes are
+        // local-only — only Main's writer broadcasts the pulse to other clients.
+        var enable = !_amex.BlockTerritoryTransport;
+        if (enable)
+        {
+            _mboxState.DiveEndFlags |= 1;
+            _pendingDiveEndEnable = true;
+        }
+        else
+        {
+            _mboxState.DiveEndFlags |= 2;
+            _pendingDiveEndDisable = true;
+        }
+
+        if (_mboxConfig.Role == MultiboxRole.Main && _mboxWriter != null)
+            Service.Log($"[MultiboxSync] Ctrl+RMB DiveEnd {(enable ? "ON" : "OFF")}; pulse sent to alts.");
+        else
+            Service.Log($"[MultiboxSync] Ctrl+RMB DiveEnd {(enable ? "ON" : "OFF")}; local only (role={_mboxConfig.Role}).");
+    }
+
+    // Draws a screen-space ring at the cursor (when Ctrl is held + feature enabled on Main),
+    // plus a marker at the projected ground point with the world coords as text.
+    private void DrawMultiboxTpClickOverlay()
+    {
+        if (!_mboxConfig.EnableTpClick && !_mboxConfig.EnableDiveEndClick)
+            return;
+
+        var ctrl = (NativeKeyState.GetAsyncKeyState(NativeKeyState.VK_CONTROL) & 0x8000) != 0
+                   || ImGui.GetIO().KeyCtrl;
+        if (!ctrl)
+            return;
+        if (Service.GameGui.GameUiHidden)
+            return;
+
+        var io = ImGui.GetIO();
+        var dl = ImGui.GetForegroundDrawList();
+        var mouse = io.MousePos;
+
+        const uint armedColor = 0xC000FFFF; // yellow-cyan (ABGR)
+        const uint validColor = 0xC000FF00; // green
+        const uint invalidColor = 0xC00000FF; // red
+
+        if (io.WantCaptureMouse)
+        {
+            dl.AddCircle(mouse, 14f, invalidColor, 24, 2f);
+            return;
+        }
+
+        var hint = _mboxConfig.EnableTpClick && _mboxConfig.EnableDiveEndClick ? "LMB: TP   RMB: DiveEnd"
+                 : _mboxConfig.EnableTpClick ? "LMB: TP"
+                 : "RMB: DiveEnd";
+
+        if (_mboxConfig.EnableTpClick && Service.GameGui.ScreenToWorld(mouse, out var world))
+        {
+            dl.AddCircle(mouse, 14f, validColor, 24, 2f);
+            dl.AddCircleFilled(mouse, 3f, validColor);
+            var label = $"({world.X:F1}, {world.Y:F1}, {world.Z:F1})  |  {hint}";
+            dl.AddText(mouse + new Vector2(18, -6), 0xFFFFFFFF, label);
+        }
+        else
+        {
+            dl.AddCircle(mouse, 14f, armedColor, 24, 2f);
+            dl.AddText(mouse + new Vector2(18, -6), 0xFFFFFFFF, hint);
+        }
+    }
+
     public static void GarbageCollection()
     {
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
     }
+}
+
+internal static partial class NativeKeyState
+{
+    public const int VK_LBUTTON = 0x01;
+    public const int VK_RBUTTON = 0x02;
+    public const int VK_CONTROL = 0x11;
+
+    [LibraryImport("user32.dll")]
+    public static partial short GetAsyncKeyState(int vKey);
 }
