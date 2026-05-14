@@ -139,7 +139,10 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
 
     private void UpdateCooldown()
     {
-        // Implemented in Task 8.
+        if (ws.CurrentTime >= _cooldownUntil)
+            _state = State.Idle;
+        // No TP fires here — the return TP already happened at AtPositional → Cooldown.
+        // Alt is at main throughout this state; we just gate the next trigger.
     }
 
     // Standoff = boss hitbox + this offset (yalms). Keeps the alt inside melee range (3y default).
