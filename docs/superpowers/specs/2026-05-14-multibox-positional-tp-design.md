@@ -52,13 +52,27 @@ Three states per alt:
    ┌──────┐  trigger conditions met   ┌───────────────┐
    │ Idle │ ───────────────────────►  │ AtPositional  │
    └──┬───┘     TP-out fires           └───────┬───────┘
-      ▲                                        │ return delay elapsed
-      │                                        │ TP-back fires
+      ▲       (alt: at boss)              alt: at boss
+      │                                        │ return delay elapsed
+      │                                        │ TP-back to main fires HERE
       │                                        ▼
-      │       cooldown expires           ┌──────────┐
-      └────────────────────────────────  │ Cooldown │
-                                         └──────────┘
+      │      cooldown expires            ┌──────────┐
+      └─────────────────────────────────│ Cooldown │
+              (no TP; alt was            └──────────┘
+               already home)             alt: at main
 ```
+
+**TP-back timing — important:** the return TP fires at the `AtPositional → Cooldown` transition, not at `Cooldown → Idle`. The alt is back at main throughout the entire Cooldown state. Cooldown is purely a debounce window that suppresses the next trigger; it does not affect the alt's position.
+
+Cycle timeline (defaults shown):
+
+| t | State | Event | Alt location |
+|---|---|---|---|
+| 0.00s | Idle → AtPositional | TP-out fires | At boss positional |
+| 0.00–0.15s | AtPositional | waiting return delay | At boss positional |
+| 0.15s | AtPositional → Cooldown | **TP-back to main fires** | At main |
+| 0.15–1.15s | Cooldown | debounce, no TP | At main |
+| 1.15s | Cooldown → Idle | unlock | At main |
 
 State data:
 - `_state`: `Idle | AtPositional | Cooldown`
