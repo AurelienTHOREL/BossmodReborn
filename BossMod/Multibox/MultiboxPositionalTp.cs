@@ -77,7 +77,47 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
 
     private void UpdateIdle(Actor player, ref readonly MultiboxSyncState state)
     {
-        // Implemented in Task 6.
+        // 1. Read the positional hint. Must be Flank or Rear, imminent, and we must be wrong.
+        var rec = hints.RecommendedPositional;
+        if (rec.Pos != Positional.Flank && rec.Pos != Positional.Rear)
+            return;
+        if (!rec.Imminent || rec.Correct)
+            return;
+
+        // 2. True North bypasses positional requirements — skip TP.
+        if (player.FindStatus(ClassShared.SID.TrueNorth) != null)
+            return;
+
+        // 3. Need a boss with a meaningful hitbox.
+        var boss = bossmod.ActiveModule?.PrimaryActor;
+        if (boss == null || boss.IsDead || boss.HitboxRadius <= 0f)
+            return;
+
+        // 4. Compute target; skip if unsafe.
+        if (!TryComputeTarget(player, boss, rec.Pos, out var target))
+            return;
+
+        // 5. Transition Idle → AtPositional. Snapshot main's position as home.
+        _homePos = new Vector3(state.MainX, state.MainY, state.MainZ);
+        _atPositionalSince = ws.CurrentTime;
+        _state = State.AtPositional;
+
+        amex.TeleportTo(target);
+        ClearStaleMovementHints();
+
+        Service.Log($"[MultiboxSync] PositionalTP: out Pos={rec.Pos} dest=({target.X:F2},{target.Y:F2},{target.Z:F2}) home=({_homePos.X:F2},{_homePos.Y:F2},{_homePos.Z:F2})");
+    }
+
+    // After a teleport, the AI's per-frame goal/forced-movement/navi target were computed with
+    // pre-TP positions. Clearing them prevents the alt from immediately walking one frame toward
+    // a stale destination (visible 1–2y drift on short TPs). Same pattern as the existing
+    // click-TP pulse handler in Plugin.cs (around line 889).
+    private void ClearStaleMovementHints()
+    {
+        hints.GoalZones.Clear();
+        hints.ForcedMovement = null;
+        if (AI.AIManager.Instance != null)
+            AI.AIManager.Instance.Controller.NaviTargetPos = null;
     }
 
     private void UpdateAtPositional()
