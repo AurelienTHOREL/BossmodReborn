@@ -947,10 +947,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
             _mboxAltReportWriter.Write(ref report, mySlot);
         }
 
-        if (_mboxConfig.EnablePositionalTp)
-            _mboxPositionalTp.Update(in state, clickTpHandledThisFrame);
-        else
-            _mboxPositionalTp.Reset();
+        _mboxPositionalTp.Update(in state, clickTpHandledThisFrame);
     }
 
     private unsafe void UpdateMultiboxSync()

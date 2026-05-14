@@ -77,6 +77,11 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
 
     private void UpdateIdle(Actor player, ref readonly MultiboxSyncState state)
     {
+        // 0. Feature toggle: if disabled, don't trigger new cycles. In-flight AtPositional /
+        //    Cooldown states still progress so the alt isn't stranded at the boss.
+        if (!config.EnablePositionalTp)
+            return;
+
         // 1. Read the positional hint. Must be Flank or Rear, imminent, and we must be wrong.
         var rec = hints.RecommendedPositional;
         if (rec.Pos != Positional.Flank && rec.Pos != Positional.Rear)
