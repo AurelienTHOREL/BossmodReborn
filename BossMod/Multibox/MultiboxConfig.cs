@@ -47,4 +47,19 @@ sealed class MultiboxConfig : ConfigNode
 
     [PropertyDisplay("Auto RSR Off on wipe (combat end while dead)")]
     public bool RsrOffOnWipe = true;
+
+    [PropertyDisplay("Ctrl+LMB TP self + alts to clicked world position (Main only)")]
+    public bool EnableTpClick = false;
+
+    [PropertyDisplay("Ctrl+RMB toggle DiveEnd invuln on self + alts")]
+    public bool EnableDiveEndClick = false;
+
+    [PropertyDisplay("Auto-TP melee DPS alt to positional (requires BMR class preset on alt)")]
+    public bool EnablePositionalTp = false;
+
+    [PropertyDisplay("Return delay after positional TP (seconds, 0.05-1.0)")]
+    public float PositionalTpReturnDelay = 0.15f;
+
+    [PropertyDisplay("Cooldown between positional TPs (seconds, 0.1-5.0)")]
+    public float PositionalTpCooldown = 1f;
 }
