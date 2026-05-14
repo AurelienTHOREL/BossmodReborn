@@ -122,7 +122,19 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
 
     private void UpdateAtPositional()
     {
-        // Implemented in Task 7.
+        var returnDelay = Math.Clamp(config.PositionalTpReturnDelay, 0.05f, 1.0f);
+        if ((ws.CurrentTime - _atPositionalSince).TotalSeconds < returnDelay)
+            return;
+
+        // Delay elapsed — TP back to main and enter Cooldown.
+        amex.TeleportTo(_homePos);
+        ClearStaleMovementHints();
+
+        var cooldown = Math.Clamp(config.PositionalTpCooldown, 0.1f, 5.0f);
+        _cooldownUntil = ws.CurrentTime.AddSeconds(cooldown);
+        _state = State.Cooldown;
+
+        Service.Log($"[MultiboxSync] PositionalTP: back dest=({_homePos.X:F2},{_homePos.Y:F2},{_homePos.Z:F2})");
     }
 
     private void UpdateCooldown()
