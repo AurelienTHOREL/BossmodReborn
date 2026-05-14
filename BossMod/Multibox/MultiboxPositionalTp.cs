@@ -32,6 +32,61 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
     // was consumed this frame — we defer one frame in that case so user-explicit TPs win.
     public void Update(ref readonly MultiboxSyncState state, bool clickTpHandled)
     {
-        // TODO: pre-checks + state machine — implemented in subsequent tasks.
+        // Universal pre-checks — apply regardless of state.
+
+        // 1. Defer one frame if user just fired a click-TP — don't collide with explicit TPs.
+        if (clickTpHandled)
+            return;
+
+        // 2. Player must exist and be alive.
+        var player = ws.Party.Player();
+        if (player == null || player.IsDead)
+        {
+            Reset();
+            return;
+        }
+
+        // 3. Track sync-state freshness. If FrameSequence stops advancing for >2s, home is stale.
+        if (state.FrameSequence != _lastSeenFrameSequence)
+        {
+            _lastSeenFrameSequence = state.FrameSequence;
+            _lastFrameSequenceChange = ws.CurrentTime;
+        }
+        var syncStale = _lastFrameSequenceChange != default
+            && (ws.CurrentTime - _lastFrameSequenceChange).TotalSeconds > 2.0;
+        if (syncStale)
+        {
+            Reset();
+            return;
+        }
+
+        // State machine — implemented in subsequent tasks.
+        switch (_state)
+        {
+            case State.Idle:
+                UpdateIdle(player, in state);
+                break;
+            case State.AtPositional:
+                UpdateAtPositional();
+                break;
+            case State.Cooldown:
+                UpdateCooldown();
+                break;
+        }
+    }
+
+    private void UpdateIdle(Actor player, ref readonly MultiboxSyncState state)
+    {
+        // Implemented in Task 6.
+    }
+
+    private void UpdateAtPositional()
+    {
+        // Implemented in Task 7.
+    }
+
+    private void UpdateCooldown()
+    {
+        // Implemented in Task 8.
     }
 }
