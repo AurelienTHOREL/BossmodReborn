@@ -16,6 +16,7 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
     private DateTime _cooldownUntil;
     private long _lastSeenFrameSequence;
     private DateTime _lastFrameSequenceChange;
+    private DateTime _lastGateLog; // DIAGNOSTIC: throttle gate-rejection logs to once/sec
 
     public void Reset()
     {
@@ -85,22 +86,42 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
         // 1. Read the positional hint. Must be Flank or Rear, imminent, and we must be wrong.
         var rec = hints.RecommendedPositional;
         if (rec.Pos != Positional.Flank && rec.Pos != Positional.Rear)
+        {
+            LogGateReject($"Pos={rec.Pos} (need Flank/Rear)");
             return;
-        if (!rec.Imminent || rec.Correct)
+        }
+        if (!rec.Imminent)
+        {
+            LogGateReject($"not imminent (Pos={rec.Pos}, Correct={rec.Correct})");
             return;
+        }
+        if (rec.Correct)
+        {
+            LogGateReject($"already correct (Pos={rec.Pos})");
+            return;
+        }
 
         // 2. True North bypasses positional requirements — skip TP.
         if (player.FindStatus(ClassShared.SID.TrueNorth) != null)
+        {
+            LogGateReject("True North active");
             return;
+        }
 
         // 3. Need a boss with a meaningful hitbox.
         var boss = bossmod.ActiveModule?.PrimaryActor;
         if (boss == null || boss.IsDead || boss.HitboxRadius <= 0f)
+        {
+            LogGateReject($"no boss (ActiveModule={bossmod.ActiveModule?.GetType().Name ?? "null"}, PrimaryActor={boss?.Name ?? "null"}, hitbox={boss?.HitboxRadius:F1})");
             return;
+        }
 
         // 4. Compute target; skip if unsafe.
         if (!TryComputeTarget(player, boss, rec.Pos, out var target))
+        {
+            LogGateReject($"target unsafe for Pos={rec.Pos} (in ForbiddenZone or out of bounds)");
             return;
+        }
 
         // 5. Transition Idle → AtPositional. Snapshot main's position as home.
         _homePos = new Vector3(state.MainX, state.MainY, state.MainZ);
@@ -111,6 +132,17 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
         ClearStaleMovementHints();
 
         Service.Log($"[MultiboxSync] PositionalTP: out Pos={rec.Pos} dest=({target.X:F2},{target.Y:F2},{target.Z:F2}) home=({_homePos.X:F2},{_homePos.Y:F2},{_homePos.Z:F2})");
+    }
+
+    // DIAGNOSTIC: log why the Idle trigger rejected this frame, throttled to 1Hz.
+    // Remove before merge.
+    private void LogGateReject(string reason)
+    {
+        var now = ws.CurrentTime;
+        if ((now - _lastGateLog).TotalSeconds < 1.0)
+            return;
+        _lastGateLog = now;
+        Service.Log($"[MultiboxSync] PositionalTP: gate reject — {reason}");
     }
 
     // After a teleport, the AI's per-frame goal/forced-movement/navi target were computed with

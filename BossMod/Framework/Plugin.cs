@@ -355,6 +355,12 @@ public sealed class Plugin : IAsyncDalamudPlugin
         _broadcast.Update();
         HandleMultiboxTpClick();
         UpdateMultiboxSync();
+        // DIAGNOSTIC: also tick the positional TP handler when role=Main so gate-rejection logs
+        // surface without a full Main+Alt setup. The handler can't actually fire a real TP cycle
+        // here (it'd teleport Main to flank/rear and back to itself), but the per-gate logs in
+        // UpdateIdle will reveal which condition is filtering the trigger. Remove before merge.
+        if (_mboxConfig.Role == MultiboxRole.Main && _mboxConfig.EnablePositionalTp)
+            _mboxPositionalTp.Update(in _mboxState, false);
         DispatchMultiboxDiveEnd();
         _amex.FinishActionGather();
 
