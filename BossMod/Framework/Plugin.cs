@@ -165,7 +165,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
                 if ((flags & 2) != 0)
                     _pendingDiveEndDisable = true;
             });
-        _mboxPositionalTp = new(_bossmod, _ws, _hints, _amex, _mboxConfig);
+        _mboxPositionalTp = new(_ws, _hints, _amex, _mboxConfig);
         _wndBossmod = new(_bossmod, _zonemod);
         _wndBossmodHints = new(_bossmod, _zonemod);
         _wndZone = new(_zonemod);

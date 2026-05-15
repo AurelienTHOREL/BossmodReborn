@@ -6,7 +6,7 @@ namespace BossMod;
 // Requirement: this only works when the alt has a BMR class autorotation preset active, because
 // Hints.RecommendedPositional is populated by class modules (Basexan / AkechiTools / GoToPositional).
 // Without a preset, the hint stays default and this handler stays Idle silently.
-sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHints hints, ActionManagerEx amex, MultiboxConfig config)
+sealed class MultiboxPositionalTp(WorldState ws, AIHints hints, ActionManagerEx amex, MultiboxConfig config)
 {
     private enum State { Idle, AtPositional, Cooldown }
 
@@ -108,16 +108,18 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
             return;
         }
 
-        // 3. Need a boss with a meaningful hitbox.
-        var boss = bossmod.ActiveModule?.PrimaryActor;
-        if (boss == null || boss.IsDead || boss.HitboxRadius <= 0f)
+        // 3. Need a targeted enemy with a meaningful hitbox. Use the autorotation's target
+        //    (rec.Target) so this works against any enemy with positional bonuses — dummies,
+        //    dungeon trash, raid bosses — not only encounters with a BMR boss module.
+        var enemy = rec.Target;
+        if (enemy == null || enemy.IsDead || enemy.HitboxRadius <= 0f)
         {
-            LogGateReject($"no boss (ActiveModule={bossmod.ActiveModule?.GetType().Name ?? "null"}, PrimaryActor={boss?.Name ?? "null"}, hitbox={boss?.HitboxRadius:F1})");
+            LogGateReject($"no target (rec.Target={enemy?.Name ?? "null"}, hitbox={enemy?.HitboxRadius:F1})");
             return;
         }
 
-        // 4. Compute target; skip if unsafe.
-        if (!TryComputeTarget(player, boss, rec.Pos, out var target))
+        // 4. Compute teleport destination; skip if unsafe.
+        if (!TryComputeTarget(player, enemy, rec.Pos, out var target))
         {
             LogGateReject($"target unsafe for Pos={rec.Pos} (in ForbiddenZone or out of bounds)");
             return;
@@ -189,13 +191,13 @@ sealed class MultiboxPositionalTp(BossModuleManager bossmod, WorldState ws, AIHi
     // target is unsafe (in ForbiddenZone / out of bounds / hits a temp obstacle) — caller skips.
     // Rear: single point directly behind boss.
     // Flank: pick the closer of left/right flank to the alt; no fallback to the other side.
-    private bool TryComputeTarget(Actor player, Actor boss, Positional pos, out Vector3 target)
+    private bool TryComputeTarget(Actor player, Actor enemy, Positional pos, out Vector3 target)
     {
         target = default;
 
-        var bossPos = boss.Position;
-        var bossFacing = boss.Rotation;
-        var standoff = boss.HitboxRadius + StandoffOffset;
+        var bossPos = enemy.Position;
+        var bossFacing = enemy.Rotation;
+        var standoff = enemy.HitboxRadius + StandoffOffset;
 
         WPos candidate;
         switch (pos)
