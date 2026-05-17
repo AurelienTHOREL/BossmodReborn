@@ -262,7 +262,7 @@ public static class WurmExtensions
 
     extension(Replication2Role r)
     {
-        public bool IsDefam => r is Replication2Role.Defam1 or Replication2Role.Defam2;
+        public bool IsDefam => r is Replication2Role.None or Replication2Role.Defam1 or Replication2Role.Defam2;
         public bool IsStack => r is Replication2Role.Stack1 or Replication2Role.Stack2;
         public bool IsCone => r is Replication2Role.Cone1 or Replication2Role.Cone2;
     }
