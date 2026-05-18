@@ -28,6 +28,11 @@ sealed class MultiboxPositionalTp(WorldState ws, AIHints hints, ActionManagerEx 
         _lastFrameSequenceChange = default;
     }
 
+    // True while the alt is being pinned at the positional. Plugin reads this AFTER
+    // ActionManagerEx.FinishActionGather() runs so we can re-assert MovementBlocked, which
+    // otherwise gets clobbered by FinishActionGather to its own computed value.
+    public bool WantsMovementLock => _state == State.AtPositional;
+
     // Called once per frame from Plugin's alt-update path.
     // 'state' is the latest received main state. 'clickTpHandled' is true if a click-TP pulse
     // was consumed this frame — we defer one frame in that case so user-explicit TPs win.

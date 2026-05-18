@@ -363,6 +363,13 @@ public sealed class Plugin : IAsyncDalamudPlugin
             _mboxPositionalTp.Update(in _mboxState, false);
         DispatchMultiboxDiveEnd();
         _amex.FinishActionGather();
+        // Re-assert movement lock AFTER FinishActionGather, which overwrites MovementBlocked to
+        // its own computed value. While Holding at a positional, we need movement input
+        // suppressed so external autofollow plugins can't drag the alt back toward main between
+        // our per-frame TPs. MovementOverride hooks RMIWalk/RMIFly, so this catches input from
+        // any source (BMR AI, vnavmesh, third-party follow plugins).
+        if (_mboxConfig.EnablePositionalTp && _mboxPositionalTp.WantsMovementLock)
+            _movementOverride.MovementBlocked = true;
 
         var uiHidden = Service.GameGui.GameUiHidden || Service.Condition[ConditionFlag.OccupiedInCutSceneEvent] || Service.Condition[ConditionFlag.WatchingCutscene78] || Service.Condition[ConditionFlag.WatchingCutscene];
         if (!uiHidden)
