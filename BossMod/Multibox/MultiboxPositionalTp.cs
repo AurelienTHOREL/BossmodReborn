@@ -68,7 +68,7 @@ sealed class MultiboxPositionalTp(WorldState ws, AIHints hints, ActionManagerEx 
                 UpdateIdle(player, in state);
                 break;
             case State.AtPositional:
-                UpdateAtPositional();
+                UpdateAtPositional(player);
                 break;
             case State.Cooldown:
                 UpdateCooldown();
@@ -118,14 +118,24 @@ sealed class MultiboxPositionalTp(WorldState ws, AIHints hints, ActionManagerEx 
             return;
         }
 
-        // 4. Compute teleport destination; skip if unsafe.
+        // 4. GCD must be about to fire. Strategy: while we're inside this short window, TP every
+        //    frame to the positional (handled in UpdateAtPositional). This ensures the snapshot
+        //    lands at the correct angle regardless of client-side movement drift.
+        var gcdRemaining = amex.GCD();
+        if (gcdRemaining > 0.25f)
+        {
+            LogGateReject($"GCD too far ({gcdRemaining:F2}s remaining, need ≤0.25s)");
+            return;
+        }
+
+        // 5. Compute teleport destination; skip if unsafe.
         if (!TryComputeTarget(player, enemy, rec.Pos, out var target))
         {
             LogGateReject($"target unsafe for Pos={rec.Pos} (in ForbiddenZone or out of bounds)");
             return;
         }
 
-        // 5. Transition Idle → AtPositional. Snapshot main's position as home.
+        // 6. Transition Idle → AtPositional. Snapshot main's position as home, record entry time.
         _homePos = new Vector3(state.MainX, state.MainY, state.MainZ);
         _atPositionalSince = ws.CurrentTime;
         _state = State.AtPositional;
@@ -133,7 +143,7 @@ sealed class MultiboxPositionalTp(WorldState ws, AIHints hints, ActionManagerEx 
         amex.TeleportTo(target);
         ClearStaleMovementHints();
 
-        Service.Log($"[MultiboxSync] PositionalTP: out Pos={rec.Pos} dest=({target.X:F2},{target.Y:F2},{target.Z:F2}) home=({_homePos.X:F2},{_homePos.Y:F2},{_homePos.Z:F2})");
+        Service.Log($"[MultiboxSync] PositionalTP: enter holding Pos={rec.Pos} GCD={gcdRemaining:F2}s dest=({target.X:F2},{target.Y:F2},{target.Z:F2}) home=({_homePos.X:F2},{_homePos.Y:F2},{_homePos.Z:F2})");
     }
 
     // DIAGNOSTIC: log why the Idle trigger rejected this frame, throttled to 1Hz.
@@ -159,21 +169,43 @@ sealed class MultiboxPositionalTp(WorldState ws, AIHints hints, ActionManagerEx 
             AI.AIManager.Instance.Controller.NaviTargetPos = null;
     }
 
-    private void UpdateAtPositional()
+    private void UpdateAtPositional(Actor player)
     {
-        var returnDelay = Math.Clamp(config.PositionalTpReturnDelay, 0.05f, 1.0f);
-        if ((ws.CurrentTime - _atPositionalSince).TotalSeconds < returnDelay)
+        // Hold-and-TP-every-frame strategy: while we're in this state, the alt is locked at the
+        // boss's positional spot. We exit when (a) the GCD has fired (timer reset to a high value),
+        // (b) the autorotation no longer has an imminent positional queued, or (c) we hit the
+        // safety timeout. PositionalTpReturnDelay doubles as the safety-timeout knob.
+        var heldFor = (ws.CurrentTime - _atPositionalSince).TotalSeconds;
+        var gcdNow = amex.GCD();
+        var rec = hints.RecommendedPositional;
+
+        var gcdFired = gcdNow > 0.5f;                // GCD timer reset → positional snapshot landed
+        var imminentCleared = !rec.Imminent;         // autorotation moved past the positional
+        var safetyTimeout = heldFor > Math.Clamp(config.PositionalTpReturnDelay, 0.05f, 1.0f);
+        var targetLost = rec.Target == null || rec.Target.IsDead || rec.Target.HitboxRadius <= 0f;
+
+        if (gcdFired || imminentCleared || safetyTimeout || targetLost)
+        {
+            amex.TeleportTo(_homePos);
+            ClearStaleMovementHints();
+
+            var cooldown = Math.Clamp(config.PositionalTpCooldown, 0.1f, 5.0f);
+            _cooldownUntil = ws.CurrentTime.AddSeconds(cooldown);
+            _state = State.Cooldown;
+
+            var reason = gcdFired ? "GCD fired" : imminentCleared ? "imminent cleared" : safetyTimeout ? "timeout" : "target lost";
+            Service.Log($"[MultiboxSync] PositionalTP: return ({reason}) heldFor={heldFor:F2}s gcd={gcdNow:F2}s dest=({_homePos.X:F2},{_homePos.Y:F2},{_homePos.Z:F2})");
             return;
+        }
 
-        // Delay elapsed — TP back to main and enter Cooldown.
-        amex.TeleportTo(_homePos);
-        ClearStaleMovementHints();
-
-        var cooldown = Math.Clamp(config.PositionalTpCooldown, 0.1f, 5.0f);
-        _cooldownUntil = ws.CurrentTime.AddSeconds(cooldown);
-        _state = State.Cooldown;
-
-        Service.Log($"[MultiboxSync] PositionalTP: back dest=({_homePos.X:F2},{_homePos.Y:F2},{_homePos.Z:F2})");
+        // Still holding — re-TP every frame to keep the alt pinned at the positional. The enemy
+        // may have rotated since entry, so recompute. If the spot has become unsafe this frame,
+        // stop re-teleporting but stay in this state so we exit cleanly via the conditions above.
+        if (TryComputeTarget(player, rec.Target!, rec.Pos, out var target))
+        {
+            amex.TeleportTo(target);
+            ClearStaleMovementHints();
+        }
     }
 
     private void UpdateCooldown()
