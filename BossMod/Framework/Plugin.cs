@@ -62,6 +62,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
     // click target and where main actually ends up.
     private int _mboxTpFollowupFramesLeft;
     private const int MboxTpFollowupDelayFrames = 2;
+    private PartyRolesManager _partyRoles = null!;
     private TimeSpan _prevUpdateTime;
     private DateTime _throttleJump;
     private DateTime _throttleInteract;
@@ -166,6 +167,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
                     _pendingDiveEndDisable = true;
             });
         _mboxPositionalTp = new(_ws, _hints, _amex, _mboxConfig);
+        _partyRoles = new(_ws);
         _wndBossmod = new(_bossmod, _zonemod);
         _wndBossmodHints = new(_bossmod, _zonemod);
         _wndZone = new(_zonemod);
@@ -205,6 +207,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
             altReader.Dispose();
         if (_mboxAltReportWriter is IDisposable altWriter && altWriter != _mboxReader as IDisposable)
             altWriter.Dispose();
+        _partyRoles.Dispose();
         _mbox.Dispose();
         _dtr.Dispose();
         _ipc.Dispose();
@@ -345,6 +348,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
         _dtr.Update();
         Camera.Instance?.Update();
         _wsSync.Update(_prevUpdateTime);
+        _partyRoles.Update();
         _bossmod.Update();
         _zonemod.ActiveModule?.Update();
         _hintsBuilder.Update(_hints, PartyState.PlayerSlot, moveImminent);

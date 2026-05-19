@@ -40,7 +40,7 @@ public sealed class ConfigUI : IDisposable
         _presets = rotationDB != null ? new(rotationDB) : null;
 
         _tabs.Add("Settings", DrawSettings);
-        _tabs.Add("Supported bosses", () => _mv.Draw(_tree, _ws));
+        _tabs.Add("Supported fights", () => _mv.Draw(_tree, _ws));
         _tabs.Add("Autorotation presets", () => _presets?.Draw());
         _tabs.Add("Slash commands", DrawAvailableCommands);
         _tabs.Add("About", _about.Draw);

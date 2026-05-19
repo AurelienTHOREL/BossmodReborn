@@ -45,7 +45,7 @@ public sealed class Service
 
     public static WindowSystem? WindowSystem;
 
-    public static ImFontPtr IconFont => Dalamud.Interface.UiBuilder.IconFont;
+    public static ImFontPtr IconFont => UiBuilder.IconFont;
 #pragma warning restore CA2211
 
     public static readonly ConfigRoot Config = new();
