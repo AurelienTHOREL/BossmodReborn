@@ -1,8 +1,18 @@
-﻿namespace BossMod;
+﻿using Dalamud.Bindings.ImGui;
+
+namespace BossMod;
 
 [ConfigDisplay(Name = "Boss modules and radar", Order = 1)]
 public sealed class BossModuleConfig : ConfigNode
 {
+    public override void DrawCustom(UITree tree, WorldState ws)
+    {
+        if (ImGui.Button("Recenter Window"))
+        {
+            Service.BossModWindow?.RecenterWindow();
+        }
+    }
+
     // boss module settings
     [PropertyDisplay("Minimal maturity for the module to be loaded", tooltip: "Some modules will have the \"WIP\" status and will not automatically load unless you change this")]
     public BossModuleInfo.Maturity MinMaturity = BossModuleInfo.Maturity.Contributed;
