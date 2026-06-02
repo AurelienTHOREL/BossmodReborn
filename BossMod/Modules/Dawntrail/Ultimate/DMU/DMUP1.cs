@@ -19,3 +19,25 @@ sealed class PatternBurst(BossModule module) : Components.CastCounterMulti(modul
 // TODO(position-pass): same as PatternBurst — infer shapes, then convert to SimpleAOEs/Groups.
 sealed class ShortPattern(BossModule module) : Components.CastCounterMulti(module, [
     (uint)AID.ShortPattern1, (uint)AID.ShortPattern2]);
+
+// Graven Image adds tether (TetherID.GravenImage = 0x2D) to players and apply GravenVuln (gaze/vuln).
+// Skeleton: tracks active tethers so a future resolver can act on them.
+// TODO(position-pass): determine the player requirement (face away / kill / break LOS) and add hints.
+// Signatures verified against BossComponent: OnTethered(Actor, in ActorTetherInfo);
+// ActorTetherInfo = (uint ID, ulong Target). Target is an instance id -> WorldState.Actors.Find.
+sealed class GravenImageAdds(BossModule module) : BossComponent(module)
+{
+    public readonly List<(Actor source, ulong targetId)> Tethers = [];
+
+    public override void OnTethered(Actor source, in ActorTetherInfo tether)
+    {
+        if (tether.ID == (uint)TetherID.GravenImage)
+            Tethers.Add((source, tether.Target));
+    }
+
+    public override void OnUntethered(Actor source, in ActorTetherInfo tether)
+    {
+        if (tether.ID == (uint)TetherID.GravenImage)
+            Tethers.RemoveAll(t => t.source == source);
+    }
+}
