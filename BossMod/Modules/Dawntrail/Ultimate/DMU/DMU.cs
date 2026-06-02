@@ -43,6 +43,11 @@ public enum AID : uint
     GravenImagePlayer2 = 0xBAB0,  // 47792, ->player
     GravenImageSelf2 = 0xBAB1,    // 47793, self
     GravenImageSelf3 = 0xBAB2,    // 47794, self
+
+    // Later-phase casts seen only in the longer pull (8MB replay); shapes not yet resolved.
+    LateAOEB9 = 0xBAB9, // 47801, Kefka->self, 4.7s cast
+    LateAOEBB = 0xBABB, // 47803, Kefka->self, 4.7s cast
+    LateAOE554 = 0xC554, // 50516, Kefka->self, 2.7s cast
 }
 
 public enum SID : uint
@@ -63,7 +68,9 @@ public enum TetherID : uint
 }
 
 [ModuleInfo(BossModuleInfo.Maturity.WIP, GroupType = BossModuleInfo.GroupType.CFC, GroupID = 1094u, NameID = 7131u, PrimaryActorOID = (uint)OID.Kefka, PlanLevel = 100)]
-public sealed class DMU(WorldState ws, Actor primary) : BossModule(ws, primary, new(100f, 100f), new ArenaBoundsCircle(20f))
+// Arena: center (100,100) confirmed from replay positions; radius set from the player wall (p99=max=27.5 from
+// center). Using 25 (players reached ~27.5 incl. knockback overshoot) — confirm the exact value in-game.
+public sealed class DMU(WorldState ws, Actor primary) : BossModule(ws, primary, new(100f, 100f), new ArenaBoundsCircle(25f))
 {
     public override bool ShouldPrioritizeAllEnemies => true;
 
