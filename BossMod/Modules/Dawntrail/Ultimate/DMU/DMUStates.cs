@@ -15,14 +15,18 @@ sealed class DMUStates : StateMachineBuilder
         // for the whole phase; each component reacts to its OWN cast, so a mechanic draws whenever Kefka casts it,
         // in any order. Once the mechanics are confirmed in-game this can become a real timed sequence.
         SimpleState(id, 10000f, "P1 (open)")
-            .ActivateOnEnter<Raidwide1>()
-            .ActivateOnEnter<Raidwide2>()
-            .ActivateOnEnter<ProximityOrTB>()
-            .ActivateOnEnter<PatternBurst>()
-            .ActivateOnEnter<ShortPattern>()
-            .ActivateOnEnter<GravenImageAdds>()
-            .ActivateOnEnter<LateAOEB9>()
-            .ActivateOnEnter<LateAOEBB>()
-            .ActivateOnEnter<LateAOE554>();
+            .ActivateOnEnter<LightOfJudgment>()
+            .ActivateOnEnter<ViciousDevastation>()
+            .ActivateOnEnter<Hyperdrive>()
+            .ActivateOnEnter<GravenImageCast>()
+            .ActivateOnEnter<MysteriousMagic>()
+            .ActivateOnEnter<BlizzardThunderCones>()
+            .ActivateOnEnter<Flare>()
+            .ActivateOnEnter<ChainTrapTowers>()
+            .ActivateOnEnter<Explosions>()
+            .ActivateOnEnter<Teleports>()
+            .ActivateOnEnter<EnrageBlowout>()
+            .ActivateOnEnter<GravenImageAttacks>()
+            .ActivateOnEnter<GravenImageAdds>();
     }
 }

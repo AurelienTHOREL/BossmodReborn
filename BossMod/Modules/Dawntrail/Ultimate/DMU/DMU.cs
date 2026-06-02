@@ -7,47 +7,59 @@ public enum OID : uint
     Helper = 0x233C,      // standard helper
 }
 
+// Names from a community timeline (整合推断, ZoneId 1363). Provisional English names approximate the
+// Chinese mechanic names; replace with official names once available.
 public enum AID : uint
 {
-    _AutoAttack_ = 0xC252,  // 49746, Kefka->player, no cast, single-target (x50)
+    _AutoAttack_ = 0xC252, // 49746, Kefka->player, single-target
 
-    Raidwide1 = 0xBCF2,     // 48370, Kefka->self, 2.7s cast (recurs ~36s/~87s)
-    Raidwide2 = 0xC622,     // 50722, Kefka->self, 4.7s cast, AOE (recurs ~67s/~137s)
-    ProximityOrTB = 0xC403, // 50179, Kefka->player+self, 4.7s cast (recurs ~20s/~102s) — tankbuster/stack TBD
+    // 恶狠狠毁荡 "Vicious Devastation" — two-hit tankbuster (MT then OT)
+    ViciousDevastation1 = 0xC403, // 50179, ->player (first enmity)
+    ViciousDevastation2 = 0xC4E1, // 50401, (second enmity)
 
-    // Signature multi-AOE pattern: 8 variants fire in simultaneous groups of 2-5 (all 4.7s self casts).
-    Pattern1 = 0xBA94, // 47764
-    Pattern2 = 0xBA95, // 47765
-    Pattern3 = 0xBA98, // 47768
-    Pattern4 = 0xBA9B, // 47771 (AOE)
-    Pattern5 = 0xBA9E, // 47774
-    Pattern6 = 0xBA9F, // 47775
-    Pattern7 = 0xBAA0, // 47776 (AOE)
-    Pattern8 = 0xBAA1, // 47777
+    GravenImageCast = 0xBCF2, // 48370, 众神之像 — summons Graven Images / shows ? markers (tether setup; NOT a raidwide)
+    LightOfJudgment = 0xC622, // 50722, 制裁之光 — big raidwide AOE
+    Hyperdrive = 0xC24B,      // 49739, 超驱动 / 二连死刑 — death sentence, cast twice
 
-    ShortPattern1 = 0xBAA6, // 47782, 2.7s self
-    ShortPattern2 = 0xBAAA, // 47786, 2.7s self (groups of ~4)
+    // 扩大大冰封 "Blizzard III Blowout" — 90-degree cones from arena center, fire in groups
+    BlizzardCone1 = 0xBA95, // 47765
+    BlizzardCone2 = 0xBA98, // 47768
+    BlizzardCone3 = 0xBA9B, // 47771
+    BlizzardCone4 = 0xBA9E, // 47774
 
-    // Instant resolution/damage of the casts above (no cast bar):
-    PatternResolve1 = 0xBAA3, // 47779, ->player, AOE
-    PatternResolve2 = 0xBAA7, // 47783, ->player, AOE
-    PatternResolve3 = 0xBAAD, // 47789, self, AOE
-    BigHit = 0xC24B,          // 49739, ->player, AOE
-    LocHit = 0xC3FD,          // 50173, ->location
-    SelfHit = 0xC4E1,         // 50401, self
+    // 劈啪啪暴雷 "Crackle Thunder" — directional, cast from ring positions (assumed similar cones)
+    CrackleThunder1 = 0xBA9F, // 47775
+    CrackleThunder2 = 0xBAA0, // 47776
+    CrackleThunder3 = 0xBAA1, // 47777
 
-    // Graven Image (add) actions:
-    GravenImageSelf1 = 0xBAA8,    // 47784, self
-    GravenImagePlayer1 = 0xBAA9,  // 47785, ->player
-    GravenImageAOE = 0xBAAC,      // 47788, ->player, AOE
-    GravenImagePlayer2 = 0xBAB0,  // 47792, ->player
-    GravenImageSelf2 = 0xBAB1,    // 47793, self
-    GravenImageSelf3 = 0xBAB2,    // 47794, self
+    MysteriousMagic = 0xBA94, // 47764, 玄乎乎魔法 — tether/knockback + observe ? markers (setup, not a damage cone)
 
-    // Later-phase casts seen only in the longer pull (8MB replay); shapes not yet resolved.
-    LateAOEB9 = 0xBAB9, // 47801, Kefka->self, 4.7s cast
-    LateAOEBB = 0xBABB, // 47803, Kefka->self, 4.7s cast
-    LateAOE554 = 0xC554, // 50516, Kefka->self, 2.7s cast
+    Flare1 = 0xBAA2,    // 呼啦啦爆炎
+    Flare2 = 0xBAA3,    // 47779
+    ChainTrap1 = 0xBAA6, // 47782, 连环环陷阱 — towers (step in)
+    ChainTrap2 = 0xBAA7, // 47783
+    Explosion = 0xBAAA,  // 47786, 爆炸
+    BigExplosion = 0xBAAB, // 大爆炸
+    GravityBurst = 0xBAAD, // 47789, 重力爆发
+
+    // Teleport / magic-circle placement, then the enrage
+    Teleport = 0xBAB9,      // 47801, 唰啦啦传送
+    MagicCircle = 0xBABA,   // 唰啦啦传送 (放魔法阵)
+    EnrageBlowout = 0xBABB, // 47803, 制裁之光 (狂暴) — Blizzard III Blowout, two 90-degree cones
+    Unk554 = 0xC554,        // 50516, 2.7s self — seen in replay, not yet in the timeline
+
+    LocHit = 0xC3FD, // 50173, ->location (unmapped)
+
+    // Graven Image (add 0x4C31) actions:
+    WaveCannon = 0xBAA8,    // 47784, 波动炮 — spread laser
+    GravenImageUnk = 0xBAA9, // 47785, ->player (unmapped)
+    GravityBullet = 0xBAAC, // 47788, 重力弹 — stack
+    RockBullet = 0xBAB0,    // 47792, 岩石弹
+    GravityWave1 = 0xBAB1,  // 47793, 重力波 / 扑杀的神气
+    GravityWave2 = 0xBAB2,  // 47794
+    AveMaria = 0xBAB3,      // 圣母颂
+    HolyAura = 0xBAB5,      // 圣母的神气
+    SleepAura = 0xBAB6,     // 睡魔的神气
 }
 
 public enum SID : uint

@@ -1,32 +1,46 @@
 namespace BossMod.Dawntrail.Ultimate.DMU;
 
-// Periodic whole-arena damage (self-cast). Shows as a raidwide warning + predicted-damage AI hint.
-sealed class Raidwide1(BossModule module) : Components.RaidwideCast(module, (uint)AID.Raidwide1);
-sealed class Raidwide2(BossModule module) : Components.RaidwideCast(module, (uint)AID.Raidwide2);
+// 制裁之光 — the actual raidwide (big whole-arena AOE).
+sealed class LightOfJudgment(BossModule module) : Components.RaidwideCast(module, (uint)AID.LightOfJudgment);
 
-// Periodic 4.7s cast onto a player. Likely tankbuster or stack — shown as a tankbuster cast warning.
-// TODO(in-game): confirm whether it's a tank cleave / stack and give it a real AOE shape.
-sealed class ProximityOrTB(BossModule module) : Components.SingleTargetCast(module, (uint)AID.ProximityOrTB, "Tankbuster/stack?");
+// 恶狠狠毁荡 — two-hit tankbuster (first then second enmity). Shown as tankbuster cast warnings.
+sealed class ViciousDevastation(BossModule module) : Components.SingleTargetCasts(module, [(uint)AID.ViciousDevastation1, (uint)AID.ViciousDevastation2], "Tankbuster (2 hits)");
 
-// Signature multi-AOE pattern: 8 cast variants fire in simultaneous groups from the arena center (and a few
-// from ring positions), each rotated to a different direction. SimpleAOEGroups draws the shape at each cast's
-// own location+rotation, so the DIRECTIONS come straight from the replay.
-// FIRST-GUESS shape: 45deg-wide cone (halfAngle 22.5deg), radius = arena. The size/angle are a starting point —
-// TUNE IN-GAME (could be wider cones, rectangles, or donuts).
-sealed class PatternBurst(BossModule module) : Components.SimpleAOEGroups(module, [
-    (uint)AID.Pattern1, (uint)AID.Pattern2, (uint)AID.Pattern3, (uint)AID.Pattern4,
-    (uint)AID.Pattern5, (uint)AID.Pattern6, (uint)AID.Pattern7, (uint)AID.Pattern8],
-    new AOEShapeCone(25f, 22.5f.Degrees()));
+// 超驱动 / 二连死刑 — death sentence, cast twice. Shown as a cast warning (stack/share TBD).
+sealed class Hyperdrive(BossModule module) : Components.CastHint(module, (uint)AID.Hyperdrive, "Death sentence (x2)");
 
-// Shorter 2.7s pattern. FIRST-GUESS: circle at the cast location. TUNE IN-GAME.
-sealed class ShortPattern(BossModule module) : Components.SimpleAOEGroups(module, [
-    (uint)AID.ShortPattern1, (uint)AID.ShortPattern2], new AOEShapeCircle(8f));
+// 众神之像 — summons Graven Images / reveals the ? markers (tether + pattern setup). Not damage; just flag the cast.
+sealed class GravenImageCast(BossModule module) : Components.CastHint(module, (uint)AID.GravenImageCast, "Graven Image (tethers / markers)");
 
-// Mechanics that only appear in the longer pull; their shapes aren't resolved yet, so show a visible named
-// cast warning (no false danger zone) until a position pass + in-game check nails them down.
-sealed class LateAOEB9(BossModule module) : Components.CastHint(module, (uint)AID.LateAOEB9, "AOE (B9) - shape TBD");
-sealed class LateAOEBB(BossModule module) : Components.CastHint(module, (uint)AID.LateAOEBB, "AOE (BB) - shape TBD");
-sealed class LateAOE554(BossModule module) : Components.CastHint(module, (uint)AID.LateAOE554, "AOE (554) - shape TBD");
+// 玄乎乎魔法 — tether/knockback + "observe the ? markers" setup. Flag the cast (no danger zone).
+sealed class MysteriousMagic(BossModule module) : Components.CastHint(module, (uint)AID.MysteriousMagic, "Tethers / knockback — read markers");
+
+// 扩大大冰封 "Blizzard III Blowout" + 劈啪啪暴雷 "Crackle Thunder": directional blowouts cast from the center
+// (and ring positions) in groups. Per the timeline these are TWO 90-degree cones, so halfAngle = 45 deg.
+// SimpleAOEGroups reads each cast's own location+rotation, so the directions come straight from the game.
+sealed class BlizzardThunderCones(BossModule module) : Components.SimpleAOEGroups(module, [
+    (uint)AID.BlizzardCone1, (uint)AID.BlizzardCone2, (uint)AID.BlizzardCone3, (uint)AID.BlizzardCone4,
+    (uint)AID.CrackleThunder1, (uint)AID.CrackleThunder2, (uint)AID.CrackleThunder3],
+    new AOEShapeCone(25f, 45f.Degrees()));
+
+// 呼啦啦爆炎 "Flare". Shape not yet confirmed — flag the casts.
+sealed class Flare(BossModule module) : Components.SimpleAOEGroups(module, [(uint)AID.Flare1, (uint)AID.Flare2], new AOEShapeCircle(6f));
+
+// 连环环陷阱 — towers to soak ("踩塔"). FIRST-GUESS circle radius; tune in-game.
+sealed class ChainTrapTowers(BossModule module) : Components.SimpleAOEGroups(module, [(uint)AID.ChainTrap1, (uint)AID.ChainTrap2], new AOEShapeCircle(6f));
+
+// 爆炸 / 大爆炸 / 重力爆发 — shapes not yet confirmed; visible named warnings until resolved.
+sealed class Explosions(BossModule module) : Components.CastHints(module, [(uint)AID.Explosion, (uint)AID.BigExplosion, (uint)AID.GravityBurst], "Explosion — shape TBD");
+
+// 唰啦啦传送 (place magic circles) + 制裁之光 enrage. Flag the casts.
+sealed class Teleports(BossModule module) : Components.CastHints(module, [(uint)AID.Teleport, (uint)AID.MagicCircle], "Magic circle placement");
+sealed class EnrageBlowout(BossModule module) : Components.CastHint(module, (uint)AID.EnrageBlowout, "Enrage: Blizzard III Blowout");
+
+// Graven Image (add) attacks — shapes not yet confirmed; visible named warnings.
+sealed class GravenImageAttacks(BossModule module) : Components.CastHints(module, [
+    (uint)AID.WaveCannon, (uint)AID.GravityBullet, (uint)AID.RockBullet,
+    (uint)AID.GravityWave1, (uint)AID.GravityWave2, (uint)AID.AveMaria,
+    (uint)AID.HolyAura, (uint)AID.SleepAura], "Graven Image attack");
 
 // Graven Image adds tether (TetherID.GravenImage = 0x2D) to players and apply GravenVuln (gaze/vuln).
 // Skeleton: tracks active tethers so a future resolver can act on them.
