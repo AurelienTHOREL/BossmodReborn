@@ -23,11 +23,18 @@ sealed class BlizzardThunderCones(BossModule module) : Components.SimpleAOEGroup
     (uint)AID.CrackleThunder1, (uint)AID.CrackleThunder2, (uint)AID.CrackleThunder3],
     new AOEShapeCone(25f, 45f.Degrees()));
 
-// 呼啦啦爆炎 "Flare". Shape not yet confirmed — flag the casts.
+// 呼啦啦爆炎 "Flare". Shape not yet confirmed — first-guess circle at the cast spot.
 sealed class Flare(BossModule module) : Components.SimpleAOEGroups(module, [(uint)AID.Flare1, (uint)AID.Flare2], new AOEShapeCircle(6f));
 
-// 连环环陷阱 — towers to soak ("踩塔"). FIRST-GUESS circle radius; tune in-game.
-sealed class ChainTrapTowers(BossModule module) : Components.SimpleAOEGroups(module, [(uint)AID.ChainTrap1, (uint)AID.ChainTrap2], new AOEShapeCircle(6f));
+// 连环环陷阱 — soak towers ("踩塔"), two waves (BAA6 then BAA7). FIRST-GUESS radius/soaker count; tune in-game.
+sealed class ChainTrap1(BossModule module) : Components.CastTowers(module, (uint)AID.ChainTrap1, 4f);
+sealed class ChainTrap2(BossModule module) : Components.CastTowers(module, (uint)AID.ChainTrap2, 4f);
+
+// 波动炮 — spread laser ("分散激光"), cast onto players. FIRST-GUESS radius; tune in-game.
+sealed class WaveCannon(BossModule module) : Components.SpreadFromCastTargets(module, (uint)AID.WaveCannon, 6f);
+
+// 重力弹 — stack ("分摊"), cast onto a player. FIRST-GUESS radius; tune in-game.
+sealed class GravityBullet(BossModule module) : Components.StackWithCastTargets(module, (uint)AID.GravityBullet, 6f);
 
 // 爆炸 / 大爆炸 / 重力爆发 — shapes not yet confirmed; visible named warnings until resolved.
 sealed class Explosions(BossModule module) : Components.CastHints(module, [(uint)AID.Explosion, (uint)AID.BigExplosion, (uint)AID.GravityBurst], "Explosion — shape TBD");
@@ -36,11 +43,10 @@ sealed class Explosions(BossModule module) : Components.CastHints(module, [(uint
 sealed class Teleports(BossModule module) : Components.CastHints(module, [(uint)AID.Teleport, (uint)AID.MagicCircle], "Magic circle placement");
 sealed class EnrageBlowout(BossModule module) : Components.CastHint(module, (uint)AID.EnrageBlowout, "Enrage: Blizzard III Blowout");
 
-// Graven Image (add) attacks — shapes not yet confirmed; visible named warnings.
+// Remaining Graven Image (add) attacks — shapes not yet confirmed; visible named warnings.
 sealed class GravenImageAttacks(BossModule module) : Components.CastHints(module, [
-    (uint)AID.WaveCannon, (uint)AID.GravityBullet, (uint)AID.RockBullet,
-    (uint)AID.GravityWave1, (uint)AID.GravityWave2, (uint)AID.AveMaria,
-    (uint)AID.HolyAura, (uint)AID.SleepAura], "Graven Image attack");
+    (uint)AID.RockBullet, (uint)AID.GravityWave1, (uint)AID.GravityWave2,
+    (uint)AID.AveMaria, (uint)AID.HolyAura, (uint)AID.SleepAura], "Graven Image attack");
 
 // Graven Image adds tether (TetherID.GravenImage = 0x2D) to players and apply GravenVuln (gaze/vuln).
 // Skeleton: tracks active tethers so a future resolver can act on them.
