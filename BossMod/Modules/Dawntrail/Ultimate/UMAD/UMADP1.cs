@@ -49,20 +49,31 @@ sealed class Explosion(BossModule module) : Components.SimpleAOEs(module, (uint)
 
 sealed class LightOfJudgment(BossModule module) : Components.RaidwideCast(module, (uint)AID._Ability_LightOfJudgment);
 
-// Double-Trouble Trap (status 5078): the holder's buff becomes a ROLE STACK (r6) on expiry. Stack drawn from the
-// status. (Role filtering by job role TBD; for now anyone can stack.)
+// Double-Trouble Trap (status 5078): the holder's buff becomes a ROLE STACK (r6) on expiry. Only show the stack
+// once the buff is about to resolve (<= 5s left) so it doesn't clutter the radar while the timer is still long.
+// (Role filtering by job role TBD; for now anyone can stack.)
 sealed class DoubleTroubleTrap(BossModule module) : Components.GenericStackSpread(module)
 {
+    private readonly List<(Actor holder, DateTime expire)> _holders = [];
+
     public override void OnStatusGain(Actor actor, ref ActorStatus status)
     {
         if (status.ID == (uint)SID._Gen_DoubleTroubleTrap)
-            Stacks.Add(new(actor, 6f, 2, int.MaxValue, status.ExpireAt));
+            _holders.Add((actor, status.ExpireAt));
     }
 
     public override void OnStatusLose(Actor actor, ref ActorStatus status)
     {
         if (status.ID == (uint)SID._Gen_DoubleTroubleTrap)
-            Stacks.RemoveAll(s => s.Target == actor);
+            _holders.RemoveAll(h => h.holder == actor);
+    }
+
+    public override void Update()
+    {
+        Stacks.Clear();
+        foreach (var h in _holders)
+            if ((h.expire - WorldState.CurrentTime).TotalSeconds <= 5d)
+                Stacks.Add(new(h.holder, 6f, 2, int.MaxValue, h.expire));
     }
 }
 
