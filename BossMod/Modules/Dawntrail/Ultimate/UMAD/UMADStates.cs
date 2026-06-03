@@ -24,12 +24,12 @@ sealed class UMADStates : StateMachineBuilder
             .ActivateOnEnter<Explosion>()
             .ActivateOnEnter<LightOfJudgment>()
             .ActivateOnEnter<DoubleTroubleTrap>()
+            .ActivateOnEnter<DoubleTroubleTrapKnockback>()
             .ActivateOnEnter<WaveCannon>()
-            .ActivateOnEnter<GravityPuddleRock>()
+            .ActivateOnEnter<GravitasPuddle>()
             .ActivateOnEnter<Hyperdrive>()
             .ActivateOnEnter<GravityCleaves>()
-            .ActivateOnEnter<RevoltingRuin>()
-            .DeactivateOnExit<RevoltingRuin>();
+            .ActivateOnEnter<RevoltingRuin>(); // tankbuster: active whole phase (cast-driven, so only draws on its cast — covers the Gravitas-phase tankbuster too)
 
         // Graven Image 1 -> the FIRST tether set knocks players back (gated off before the 2nd set, which is puddle/rock).
         Cast(id + 0x10000, (uint)AID._Ability_GravenImage, 13.8f, 3.0f, "Graven Image 1")
@@ -44,9 +44,7 @@ sealed class UMADStates : StateMachineBuilder
 
         Cast(id + 0x60000, (uint)AID._Ability_GravenImage, 17.6f, 3.0f, "Graven Image 2 (puddle/rock)");
 
-        Cast(id + 0x70000, (uint)AID._Ability_RevoltingRuinIII, 20.0f, 5.0f, "Tankbuster 2")
-            .ActivateOnEnter<RevoltingRuin>()
-            .DeactivateOnExit<RevoltingRuin>();
+        Cast(id + 0x70000, (uint)AID._Ability_RevoltingRuinIII, 20.0f, 5.0f, "Tankbuster 2");
 
         Cast(id + 0x80000, (uint)AID._Ability_LightOfJudgment, 35.1f, 5.0f, "Raidwide 2");
         SimpleState(id + 0xFF0000u, 10000f, "???");
