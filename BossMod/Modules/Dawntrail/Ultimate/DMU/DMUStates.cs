@@ -17,7 +17,6 @@ sealed class DMUStates : StateMachineBuilder
         // Opener tankbuster — activate every visualizer here (each draws only on its own cast).
         Cast(id, (uint)AID.ViciousDevastation1, 15.6f, 4.7f, "Tankbuster 1")
             .ActivateOnEnter<LightOfJudgment>()
-            .ActivateOnEnter<ViciousDevastation>()
             .ActivateOnEnter<Hyperdrive>()
             .ActivateOnEnter<GravenImageCast>()
             .ActivateOnEnter<BlizzardCones>()
@@ -31,25 +30,30 @@ sealed class DMUStates : StateMachineBuilder
             .ActivateOnEnter<Teleports>()
             .ActivateOnEnter<EnrageBlowout>()
             .ActivateOnEnter<GravenImageAttacks>()
-            .ActivateOnEnter<GravenImageTetherKnockback>()
-            .ActivateOnEnter<GravenImageAdds>();
+            .ActivateOnEnter<GravenImageAdds>()
+            .ActivateOnEnter<ViciousDevastation>()   // tank cone: only during the tankbuster, not the whole phase
+            .DeactivateOnExit<ViciousDevastation>();
 
-        // Graven Image 1 -> Blizzard cones + tethers -> towers x2 -> Blizzard + Thunder cones
-        Cast(id + 0x10000, (uint)AID.GravenImageCast, 13.8f, 2.7f, "Graven Image 1");
+        // Graven Image 1 -> the FIRST tether set knocks players back (only here; the 2nd set is puddle/rock instead).
+        Cast(id + 0x10000, (uint)AID.GravenImageCast, 13.8f, 2.7f, "Graven Image 1")
+            .ActivateOnEnter<GravenImageTetherKnockback>();
         CastMulti(id + 0x20000, [(uint)AID.BlizzardCone1, (uint)AID.BlizzardCone2, (uint)AID.BlizzardCone3, (uint)AID.BlizzardCone4], 8.1f, 4.7f, "Blizzard cones");
         Cast(id + 0x30000, (uint)AID.ChainTrap1, 7.1f, 2.7f, "Towers 1");
         Cast(id + 0x40000, (uint)AID.ChainTrap2, 5.2f, 2.7f, "Towers 2");
         CastMulti(id + 0x50000, [(uint)AID.BlizzardCone1, (uint)AID.BlizzardCone2, (uint)AID.BlizzardCone3, (uint)AID.BlizzardCone4, (uint)AID.CrackleThunder1, (uint)AID.CrackleThunder2, (uint)AID.CrackleThunder3], 3.9f, 4.7f, "Blizzard + Thunder cones");
 
-        // Raidwide + double death-sentence
-        Cast(id + 0x60000, (uint)AID.LightOfJudgment, 9.2f, 4.7f, "Raidwide");
+        // Raidwide + double death-sentence (first tether set is over by here -> stop the knockback hint)
+        Cast(id + 0x60000, (uint)AID.LightOfJudgment, 9.2f, 4.7f, "Raidwide")
+            .DeactivateOnExit<GravenImageTetherKnockback>();
 
         // Graven Image 2 (stack) -> Blizzard stack
         Cast(id + 0x70000, (uint)AID.GravenImageCast, 17.6f, 2.7f, "Graven Image 2 (stack)");
         CastMulti(id + 0x80000, [(uint)AID.BlizzardCone1, (uint)AID.BlizzardCone2, (uint)AID.BlizzardCone3, (uint)AID.BlizzardCone4], 7.1f, 4.7f, "Blizzard (stack)");
 
         // Tankbuster 2 (then Graven Image gravity attacks resolve via their components during the gap)
-        Cast(id + 0x90000, (uint)AID.ViciousDevastation1, 10.0f, 4.7f, "Tankbuster 2");
+        Cast(id + 0x90000, (uint)AID.ViciousDevastation1, 10.0f, 4.7f, "Tankbuster 2")
+            .ActivateOnEnter<ViciousDevastation>()
+            .DeactivateOnExit<ViciousDevastation>();
 
         // Raidwide 2 + double death-sentence
         Cast(id + 0xA0000, (uint)AID.LightOfJudgment, 35.1f, 4.7f, "Raidwide 2");

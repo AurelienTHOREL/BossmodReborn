@@ -6,7 +6,7 @@ sealed class LightOfJudgment(BossModule module) : Components.RaidwideCast(module
 // 恶狠狠毁荡 — tankbuster CONE that also hits the rest of the party if they're in front. Draw the cone for the
 // party to dodge; AI-nudge the baited main tank to point it NORTH (stand just north of the boss).
 // Cone size is a first guess — tune in-game.
-sealed class ViciousDevastation(BossModule module) : Components.BaitAwayCast(module, (uint)AID.ViciousDevastation1, new AOEShapeCone(40f, 30f.Degrees()), tankbuster: true, damageType: AIHints.PredictedDamageType.Tankbuster)
+sealed class ViciousDevastation(BossModule module) : Components.BaitAwayCast(module, (uint)AID.ViciousDevastation1, new AOEShapeCone(40f, 35f.Degrees()), tankbuster: true, damageType: AIHints.PredictedDamageType.Tankbuster)
 {
     public override void AddAIHints(int slot, Actor actor, PartyRolesConfig.Assignment assignment, AIHints hints)
     {
@@ -27,11 +27,11 @@ sealed class ViciousDevastation(BossModule module) : Components.BaitAwayCast(mod
 sealed class Hyperdrive(BossModule module) : Components.CastHint(module, (uint)AID.Hyperdrive, "Death sentence (x2)");
 sealed class GravenImageCast(BossModule module) : Components.CastHint(module, (uint)AID.GravenImageCast, "Graven Image (tethers / markers)");
 
-// 玄乎乎魔法 + 扩大大冰封 "Blizzard III Blowout" — two 90-degree cones from the center (each cast draws at its own
-// rotation, so only the cones that actually fire are shown: 2 on the first set).
-sealed class BlizzardCones(BossModule module) : Components.SimpleAOEGroups(module, [
-    (uint)AID.MysteriousMagic, (uint)AID.BlizzardCone1, (uint)AID.BlizzardCone2, (uint)AID.BlizzardCone3, (uint)AID.BlizzardCone4],
-    new AOEShapeCone(25f, 45f.Degrees()));
+// 扩大大冰封 "Blizzard III Blowout". The REAL damaging cone is 0xBA9B (BlizzardCone3): it fires as TWO opposite
+// 90-degree cones whose direction is set by the ? markers. The other variants (BA94/95/98/9E) are decoy
+// telegraphs that deal no damage (replay: BA9B hit players 39x vs 0-1 for the rest) — drawing them all lit the
+// whole arena, so we draw only the real one => two cones / two quadrants.
+sealed class BlizzardCones(BossModule module) : Components.SimpleAOEs(module, (uint)AID.BlizzardCone3, new AOEShapeCone(20f, 45f.Degrees()));
 
 // 劈啪啪暴雷 — the second set adds LINES (rectangles across the arena), not cones (may be real or fake).
 // FIRST-GUESS length/width; tune in-game.

@@ -80,9 +80,8 @@ public enum TetherID : uint
 }
 
 [ModuleInfo(BossModuleInfo.Maturity.WIP, GroupType = BossModuleInfo.GroupType.CFC, GroupID = 1094u, NameID = 7131u, PrimaryActorOID = (uint)OID.Kefka, PlanLevel = 100)]
-// Arena: center (100,100) confirmed from replay positions; radius set from the player wall (p99=max=27.5 from
-// center). Using 25 (players reached ~27.5 incl. knockback overshoot) — confirm the exact value in-game.
-public sealed class DMU(WorldState ws, Actor primary) : BossModule(ws, primary, new(100f, 100f), new ArenaBoundsCircle(25f))
+// Arena: center (100,100), radius 20 (confirmed in-game; players reaching ~27.5 in replays was knockback overshoot).
+public sealed class DMU(WorldState ws, Actor primary) : BossModule(ws, primary, new(100f, 100f), new ArenaBoundsCircle(20f))
 {
     public override bool ShouldPrioritizeAllEnemies => true;
 
