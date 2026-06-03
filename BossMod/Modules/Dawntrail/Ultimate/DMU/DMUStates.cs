@@ -20,8 +20,8 @@ sealed class DMUStates : StateMachineBuilder
             .ActivateOnEnter<ViciousDevastation>()
             .ActivateOnEnter<Hyperdrive>()
             .ActivateOnEnter<GravenImageCast>()
-            .ActivateOnEnter<MysteriousMagic>()
-            .ActivateOnEnter<BlizzardThunderCones>()
+            .ActivateOnEnter<BlizzardCones>()
+            .ActivateOnEnter<ThunderLines>()
             .ActivateOnEnter<Flare>()
             .ActivateOnEnter<ChainTrap1>()
             .ActivateOnEnter<ChainTrap2>()
@@ -31,6 +31,7 @@ sealed class DMUStates : StateMachineBuilder
             .ActivateOnEnter<Teleports>()
             .ActivateOnEnter<EnrageBlowout>()
             .ActivateOnEnter<GravenImageAttacks>()
+            .ActivateOnEnter<GravenImageTetherKnockback>()
             .ActivateOnEnter<GravenImageAdds>();
 
         // Graven Image 1 -> Blizzard cones + tethers -> towers x2 -> Blizzard + Thunder cones
