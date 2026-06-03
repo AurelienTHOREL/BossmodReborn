@@ -22,8 +22,7 @@ sealed class DMUStates : StateMachineBuilder
             .ActivateOnEnter<BlizzardCones>()
             .ActivateOnEnter<ThunderLines>()
             .ActivateOnEnter<Flare>()
-            .ActivateOnEnter<ChainTrap1>()
-            .ActivateOnEnter<ChainTrap2>()
+            .ActivateOnEnter<DoubleTroubleTrap>()
             .ActivateOnEnter<WaveCannon>()
             .ActivateOnEnter<GravityBullet>()
             .ActivateOnEnter<Explosions>()
@@ -38,8 +37,8 @@ sealed class DMUStates : StateMachineBuilder
         Cast(id + 0x10000, (uint)AID.GravenImageCast, 13.8f, 2.7f, "Graven Image 1")
             .ActivateOnEnter<GravenImageTetherKnockback>();
         CastMulti(id + 0x20000, [(uint)AID.BlizzardCone1, (uint)AID.BlizzardCone2, (uint)AID.BlizzardCone3, (uint)AID.BlizzardCone4], 8.1f, 4.7f, "Blizzard cones");
-        Cast(id + 0x30000, (uint)AID.ChainTrap1, 7.1f, 2.7f, "Towers 1");
-        Cast(id + 0x40000, (uint)AID.ChainTrap2, 5.2f, 2.7f, "Towers 2");
+        Cast(id + 0x30000, (uint)AID.ChainTrap1, 7.1f, 2.7f, "Double-Trouble Trap 1");
+        Cast(id + 0x40000, (uint)AID.ChainTrap2, 5.2f, 2.7f, "Double-Trouble Trap 2");
         CastMulti(id + 0x50000, [(uint)AID.BlizzardCone1, (uint)AID.BlizzardCone2, (uint)AID.BlizzardCone3, (uint)AID.BlizzardCone4, (uint)AID.CrackleThunder1, (uint)AID.CrackleThunder2, (uint)AID.CrackleThunder3], 3.9f, 4.7f, "Blizzard + Thunder cones");
 
         // Raidwide + double death-sentence (first tether set is over by here -> stop the knockback hint)

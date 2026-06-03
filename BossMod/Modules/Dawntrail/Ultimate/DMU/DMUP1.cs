@@ -6,7 +6,7 @@ sealed class LightOfJudgment(BossModule module) : Components.RaidwideCast(module
 // 恶狠狠毁荡 — tankbuster CONE that also hits the rest of the party if they're in front. Draw the cone for the
 // party to dodge; AI-nudge the baited main tank to point it NORTH (stand just north of the boss).
 // Cone size is a first guess — tune in-game.
-sealed class ViciousDevastation(BossModule module) : Components.BaitAwayCast(module, (uint)AID.ViciousDevastation1, new AOEShapeCone(40f, 35f.Degrees()), tankbuster: true, damageType: AIHints.PredictedDamageType.Tankbuster)
+sealed class ViciousDevastation(BossModule module) : Components.BaitAwayCast(module, (uint)AID.ViciousDevastation1, new AOEShapeCone(40f, 60f.Degrees()), tankbuster: true, damageType: AIHints.PredictedDamageType.Tankbuster)
 {
     public override void AddAIHints(int slot, Actor actor, PartyRolesConfig.Assignment assignment, AIHints hints)
     {
@@ -42,10 +42,11 @@ sealed class ThunderLines(BossModule module) : Components.SimpleAOEGroups(module
 // 呼啦啦爆炎 "Flare" — first-guess circle.
 sealed class Flare(BossModule module) : Components.SimpleAOEGroups(module, [(uint)AID.Flare1, (uint)AID.Flare2], new AOEShapeCircle(6f));
 
-// 连环环陷阱 — soak towers, spawned where the 波动炮 beams hit players. SpreadFromCastTargets keeps players apart
-// so the towers/beams don't overlap. Radii are first-guesses; tune in-game.
-sealed class ChainTrap1(BossModule module) : Components.CastTowers(module, (uint)AID.ChainTrap1, 4f);
-sealed class ChainTrap2(BossModule module) : Components.CastTowers(module, (uint)AID.ChainTrap2, 4f);
+// 连环环陷阱 "Double-Trouble Trap" — a player gets a buff that, on EXPIRY, becomes a ROLE STACK and also knocks
+// back the players who stack in it (everyone except the buff-holder). It is status-driven, so a proper resolver
+// needs the buff's status ID; until then just flag the cast.
+// TODO(status): role stack on the buff-holder + knockback on the stackers, keyed on the Double-Trouble Trap SID.
+sealed class DoubleTroubleTrap(BossModule module) : Components.CastHints(module, [(uint)AID.ChainTrap1, (uint)AID.ChainTrap2], "Double-Trouble Trap: role stack + knockback");
 
 // 波动炮 — spread laser ("分散激光"); spreading avoids overlapping beams (and the towers they spawn).
 sealed class WaveCannon(BossModule module) : Components.SpreadFromCastTargets(module, (uint)AID.WaveCannon, 6f);
