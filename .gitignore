@@ -4,3 +4,5 @@ bin/
 *.user
 logs/
 **/.idea/**
+
+.serena/
