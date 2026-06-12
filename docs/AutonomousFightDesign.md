@@ -331,36 +331,80 @@ assignment data already exists and is correct; we are only adding the bridge.
 
 ## 9. Phased plan
 
-- **Phase 1 (prototype — next step):** ship `StrategyPreset`,
-  `IMechanicResolver` + `PlayerPlan`, `AssignmentHintBridge`, and
-  `AssignedMechanic`, plus a single end-to-end resolver (M08S Wolves' Reign) as
-  proof that "each person gets their own movement" drives the AI. No UI yet;
-  preset loaded from a JSON file.
-- **Phase 2:** preset authoring/sharing UI (mirror the cooldown-planner DB), and
-  pre-pull validation.
-- **Phase 3:** convert the remaining M08S mechanics, then template across the
-  tier (M05S–M07S).
-- **Phase 4:** multi-body resolvers; optional IPC preset distribution; tackle an
-  ultimate.
+- **Phase 1 (DONE — on this branch):** `StrategyPreset`, `IMechanicResolver` +
+  `PlayerPlan`, `AssignmentHintBridge` (inverted-FZ hard / goal soft),
+  `AssignedMechanic`, `AssignmentManager`, `DelegateResolver` adapter,
+  `StrategyPresetDatabase` (load/save/share, wired in `Plugin.cs`),
+  `AssignmentValidator` + `AssignmentStatusHint` (pre-pull validation), and
+  `FixedRoleSpotsResolver` demo. Not yet compiler-verified (see §11).
+- **Phase 2:** convert the first live mechanic — M12S P2 StagingAssignment
+  clock/role positioning — via `DelegateResolver` (§7); preset authoring UI.
+- **Phase 3:** convert remaining M12S mechanics, then template across the tier
+  (M09S–M11S).
+- **Phase 4:** multi-body resolvers; IPC preset distribution; FFLogs import
+  (§12); tackle an ultimate.
 
-## 10. File map (proposed for Phase 1)
+## 10. File map (Phase 1 — shipped)
 
 ```
-BossMod/Assignments/StrategyPreset.cs                 // strat container + JSON
-BossMod/Assignments/IMechanicResolver.cs              // interface + PlayerPlan
-BossMod/Assignments/AssignmentHintBridge.cs           // plan -> AIHints
-BossMod/Assignments/AssignedMechanic.cs               // base BossComponent
-BossMod/Assignments/AssignmentManager.cs              // preset load/lookup per module
-BossMod/Assignments/Examples/FixedRoleSpotsResolver.cs// compile-ready demo resolver
-Modules/Dawntrail/Savage/M12SP2Lindwurm/
-    (follow-up) StagingAssignment clock/role positioning -> AssignedMechanic
+BossMod/Assignments/StrategyPreset.cs                  // strat container + JSON
+BossMod/Assignments/IMechanicResolver.cs               // interface + PlayerPlan
+BossMod/Assignments/AssignmentHintBridge.cs            // plan -> AIHints (inverted-FZ / goal)
+BossMod/Assignments/AssignedMechanic.cs                // base BossComponent
+BossMod/Assignments/AssignmentManager.cs               // preset lookup + DB init
+BossMod/Assignments/DelegateResolver.cs                // 1-line adapter for existing mechanics
+BossMod/Assignments/StrategyPresetDatabase.cs          // load/save/share presets on disk
+BossMod/Assignments/AssignmentValidator.cs             // pre-pull validation + status hint
+BossMod/Assignments/Examples/FixedRoleSpotsResolver.cs // compile-ready demo resolver
+BossMod/Assignments/FFLogs/                            // §12 import scaffold
+BossMod/Framework/Plugin.cs                            // AssignmentManager.Initialize(...)
 ```
 
 ## 11. Build verification note
 
-This Phase-1 code targets only stable, directly-read APIs (`AIHints`,
-`BossComponent`, `PartyRolesConfig`, `WPos`, `Angle`, `AIHints.GoalSingleTarget`).
-It was authored in an environment without a .NET toolchain, so it has **not been
-compiler-verified**; a `dotnet build` pass is required before merge. The live-fight
-migration (IdyllicDreamTowers) is deliberately left as a follow-up to be done with
-a compiler available.
+This code targets only stable, directly-read APIs (`AIHints`, `BossComponent`,
+`PartyRolesConfig`, `WPos`, `Angle`, `SDInvertedCircle`, `Serialization`,
+`Service`). It was authored without a .NET toolchain, so it is **not
+compiler-verified**; a `dotnet build` pass is required before merge. The
+live-fight migration (StagingAssignment) is deliberately left as a follow-up to
+be done with a compiler available.
+
+## 12. New task — derive the strategy from an FFLogs report
+
+Goal: instead of (or in addition to) hand-picking a strat, point the plugin at an
+FFLogs log of a clean kill and have it **infer the StrategyPreset automatically**,
+so a raid can reproduce a known-good plan.
+
+How it fits the existing layer: the output is just a `StrategyPreset`, so nothing
+downstream changes — resolvers and the bridge consume it exactly as a hand-authored
+preset. Inference is the only new work, and it is per-encounter (the same per-fight
+knowledge the components already encode, read from logged events instead of live
+state).
+
+Scaffold shipped under `BossMod/Assignments/FFLogs/`:
+- `FFLogsModels.cs` — DTOs for the report subset we need (fights, actors, events).
+- `IFFLogsClient.cs` — fetch interface, OAuth2 credentials, the GraphQL query
+  (`FFLogsQueries.Report`), and a `NotConfiguredFFLogsClient` stub. The live
+  implementation (token exchange + GraphQL POST + paginated event download) is a
+  TODO, gated on the environment's outbound network policy and user-supplied
+  API credentials (https://www.fflogs.com/api/clients/).
+- `FFLogsStrategyImporter.cs` — generic driver: fetch report → pick first kill of
+  the target encounter → run a registered `IEncounterStrategyMapper` to fill
+  `preset.Choices`.
+
+Per-encounter inference (`IEncounterStrategyMapper`) is where the value is. Example
+for M12S P2: from a kill's events, read each player's role + their resolved
+clock-spot/debuff at Replication, deduce whether the raid ran `DN` vs `Banana
+Codex` and the `Rep3Roles[]` clock→role mapping, and write those choices into the
+preset. Each fight needs its own mapper, mirroring how each fight already owns its
+components.
+
+Open design points (for a follow-up):
+- **Coordinate transform.** FFLogs map coords ≠ world `WPos`; need the per-arena
+  offset/scale to map logged positions back to arena positions for inference.
+- **Robustness.** Infer from multiple kills / majority vote rather than one pull;
+  flag low-confidence inferences instead of silently guessing.
+- **Credentials + networking.** Store client id/secret in config; respect the
+  remote-execution network policy (the live client must be allowed outbound to
+  `fflogs.com`).
+- **Privacy/ToS.** FFLogs API usage terms + rate limits; cache reports locally.

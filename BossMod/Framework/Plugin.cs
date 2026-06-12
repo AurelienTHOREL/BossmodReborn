@@ -85,6 +85,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var qpf = (ulong)FFXIVClientStructs.FFXIV.Client.System.Framework.Framework.Instance()->PerformanceCounterFrequency;
         _rotationDB = new(new(dalamud.ConfigDirectory.FullName + "/autorot"), new(dalamud.AssemblyLocation.DirectoryName! + "/DefaultRotationPresets.json"));
+        Assignments.AssignmentManager.Initialize(dalamud.ConfigDirectory.FullName + "/assignments");
         _ws = new(qpf, gameVersion);
         _rsr = new(dalamud);
         _hints = new();

@@ -15,6 +15,23 @@ public static class AssignmentManager
     // keyed by BossModule concrete type
     private static readonly Dictionary<Type, StrategyPreset> _presets = [];
 
+    // on-disk preset store; created by Initialize() during plugin startup
+    public static StrategyPresetDatabase? Database { get; private set; }
+
+    // wire up the shared preset database (called once from Plugin ctor); loading the
+    // database registers every on-disk preset against its encounter module.
+    public static void Initialize(string rootPath)
+    {
+        try
+        {
+            Database = new StrategyPresetDatabase(rootPath);
+        }
+        catch (Exception e)
+        {
+            Service.Log($"[Assignments] failed to initialize preset database at '{rootPath}': {e.Message}");
+        }
+    }
+
     // register / replace the active preset for an encounter
     public static void Register(Type moduleType, StrategyPreset preset) => _presets[moduleType] = preset;
 

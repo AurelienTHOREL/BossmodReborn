@@ -149,3 +149,16 @@ getAjustedRecastTime:
 - MCH if have rapid fire (853) status -> override to 100\*param
 - DNC overrides
 - etc special overrides
+
+assignments (autonomous fight resolution - see docs/AutonomousFightDesign.md):
+
+- Phase 1 layer shipped (BossMod/Assignments): StrategyPreset(+DB), IMechanicResolver/PlayerPlan,
+  AssignmentHintBridge (inverted-FZ hard / goal soft), AssignedMechanic, DelegateResolver,
+  AssignmentValidator. NOT yet compiler-verified - needs a dotnet build pass.
+- wire first live mechanic: M12S P2 StagingAssignment clock/role -> DelegateResolver + AssignedMechanic
+- preset authoring/sharing UI (mirror cooldown-planner PlanDatabase)
+- fflogs: derive StrategyPreset from a report (BossMod/Assignments/FFLogs scaffold)
+  -- implement live IFFLogsClient: OAuth2 client-credentials + GraphQL POST + paginated events
+  -- per-encounter IEncounterStrategyMapper (start with M12S P2: infer DN vs Banana Codex + Rep3Roles)
+  -- FFLogs map-coord -> world WPos transform per arena
+  -- store api client id/secret in config; respect remote network policy; cache reports
