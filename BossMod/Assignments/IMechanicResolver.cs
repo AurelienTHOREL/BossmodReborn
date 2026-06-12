@@ -6,17 +6,27 @@ public readonly struct PlayerPlan
 {
     // where this player should stand (null = no positioning opinion this frame)
     public readonly WPos? TargetPos;
+    // acceptance radius around TargetPos (used as the "you must be inside" circle for hard plans)
+    public readonly float Radius;
+    // when the position must be reached; default = immediately. For hard plans this lets the
+    // AI keep uptime until it actually has to move (forbidden zones are time-aware).
+    public readonly DateTime Activation;
     // direction this player should face (e.g. gaze) (null = no facing opinion)
     public readonly Angle? Facing;
-    // if true, this position must be reached even at the cost of uptime (strong attractor);
-    // if false, it blends with normal uptime goal zones
+    // true  = must reach the spot even at the cost of uptime; implemented as an inverted
+    //         forbidden zone (everywhere outside the acceptance circle is forbidden), which
+    //         composes with AOE forbidden zones so the AI can never path through danger to get here.
+    // false = soft preference, implemented as an attraction gradient that blends with uptime.
     public readonly bool Hard;
-    // optional explicit attractor weight; when null the bridge picks a default based on Hard
+    // optional explicit soft-attractor weight; when null the bridge picks a default
     public readonly float? Weight;
 
-    public PlayerPlan(WPos? targetPos = null, Angle? facing = null, bool hard = false, float? weight = null)
+    public PlayerPlan(WPos? targetPos = null, float radius = 2f, DateTime activation = default,
+        Angle? facing = null, bool hard = false, float? weight = null)
     {
         TargetPos = targetPos;
+        Radius = radius;
+        Activation = activation;
         Facing = facing;
         Hard = hard;
         Weight = weight;

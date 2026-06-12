@@ -6,10 +6,17 @@
 > Prior art in this very tier validates the direction: M12S P2 already ships a
 > `StagingAssignment<TRole>` component plus clockspot→role strategy presets
 > (`DN` / `Banana Codex`, configurable `Rep3Roles[]`) in
-> `Modules/Dawntrail/Savage/M12SP2Lindwurm/`. That code proves the pattern but
-> (a) is bespoke to one fight and (b) still resolves mostly to *forbidden zones /
-> overlay*, not to the AI's `GoalZones`. This design extracts that idea into a
-> reusable layer and adds the missing movement bridge.
+> `Modules/Dawntrail/Savage/M12SP2Lindwurm/`. That code computes each player's
+> clock spot + role and **draws it** (`StagingAssignments.cs` has only
+> `DrawArenaForeground`), but it has **no `AddAIHints`** — so the assignment never
+> moves the character. This design extracts that idea into a reusable layer and
+> adds the missing movement bridge.
+>
+> Note (corrected during Phase 1): tower-soak mechanics are *already* autonomous —
+> `Components.GenericTowers.AddAIHints` drives the AI into the correct tower using
+> **inverted forbidden zones** (`SDInvertedCircle`/`SDIntersection`). That is the
+> established idiom for "AI, stand exactly here", and the bridge now uses it for
+> hard positioning rather than a soft goal attractor.
 
 ## 1. Goal
 
@@ -160,9 +167,11 @@ what *this* player should do.
 public readonly struct PlayerPlan
 {
     public WPos? TargetPos;     // where to stand (null = no movement opinion)
+    public float Radius;        // acceptance radius for hard "stand here" circle
+    public DateTime Activation; // when the spot must be reached (uptime-aware)
     public Angle? Facing;       // for gazes / directional uptime
-    public ActionID? Action;    // optional: action to weave (e.g. mitigation)
-    public bool Hard;           // true = override uptime, must reach exactly
+    public bool Hard;           // true = inverted forbidden zone (must reach); false = soft goal
+    // (action-weaving via hints.ActionsToExecute is a Phase 2 addition)
 }
 
 public interface IMechanicResolver
@@ -192,11 +201,14 @@ public static void Apply(in PlayerPlan plan, AIHints hints)
 {
     if (plan.TargetPos is { } pos)
     {
-        // strong, tight attractor at the assigned spot.
-        // weight tuned high so it beats default uptime goal zones,
-        // but forbidden zones still win (pathfinder won't cross danger).
-        var weight = plan.Hard ? 10f : 2f;
-        hints.GoalZones.Add(AIHints.GoalSingleTarget(pos, /*radius*/ 1f, weight));
+        if (plan.Hard)
+            // "must stand here": forbid everywhere outside an acceptance circle.
+            // same idiom as GenericTowers; composes with AOE forbidden zones, so the
+            // AI settles on a spot that is on-assignment AND safe, never crossing danger.
+            hints.AddForbiddenZone(new SDInvertedCircle(pos, plan.Radius), plan.Activation);
+        else
+            // soft preference: attraction gradient that blends with uptime goals.
+            hints.GoalZones.Add(AIHints.GoalProximity(pos, 50f, plan.Weight ?? 2f));
     }
     if (plan.Facing is { } f)
         hints.ForbiddenDirections.Add((/* derive a thin allowed arc around f */));
@@ -259,8 +271,9 @@ Randomized mechanics are handled by keeping resolution per-frame and state-drive
 
 - **Random target / tether / debuff** → resolver reads the live actor data
   (`OnCastStarted`, `OnTethered`, `OnStatusGain`) and recomputes `TargetPos`. The
-  bridge re-emits the goal zone each frame, so the AI re-paths as the situation
-  updates. This is exactly how `WolvesReignConeCircle` already tracks `jumpLoc`.
+  bridge re-emits the zone (inverted-forbidden for hard, goal for soft) each
+  frame, so the AI re-paths as the situation updates. This is exactly how
+  `WolvesReignConeCircle` already tracks `jumpLoc`.
 - **Random safe tile (e.g. exploding floor patterns)** → resolver picks the
   surviving tile that matches the player's assigned region under the chosen
   strat; forbidden zones from the AOE component still guarantee safety.
@@ -268,37 +281,37 @@ Randomized mechanics are handled by keeping resolution per-frame and state-drive
   uptime goal zones blend in, or `Hard = true` to dominate when survival
   requires an exact spot.
 
-## 7. Worked example — M12S P2 tower soaks (Idyllic Dream)
+## 7. Worked example — M12S P2 staged clock/role positioning
 
-The current tier already demonstrates the assignment idea; the gap is the
-movement bridge. Concrete payoff target: **M12S P2 Idyllic Dream** tower soaks
-(`Modules/Dawntrail/Savage/M12SP2Lindwurm/IdyllicDreamTowers.cs`).
+Pick a mechanic whose assignment is genuinely *not* yet bridged to the AI. Tower
+soaks are **already autonomous** (`GenericTowers.AddAIHints` drives them via
+inverted forbidden zones), so they are not the gap. The real gap is the
+**`StagingAssignment<TRole>`** family in M12S P2
+(`Modules/Dawntrail/Savage/M12SP2Lindwurm/StagingAssignments.cs` +
+`Replication2.cs`):
 
-Today (`IdyllicDreamTowers.cs`):
-- `IdyllicDreamElementalMeteor` builds the towers (`CreateTowers`, line ~197),
-  each with `forbiddenSoakers` (who must *not* soak).
-- It then **intentionally suppresses** `GenericTowers` AI hints (comment at
-  ~line 261) — so the AI is *not* driven to soak its assigned tower; the human
-  reads the overlay.
+- It assigns each player a `Clockspot` + a role (stack / cone / defamation) from
+  the chosen strat preset (`DN` / `Banana Codex`, `Rep3Roles[]`).
+- It exposes that via `DrawArenaForeground` (lines/arrows) and text hints — but
+  has **no `AddAIHints`**. The AI is never told to walk to its clock spot.
 
 Migration:
-1. Wrap the existing tower list in an `IMechanicResolver`: given the player's
-   slot/role, pick *their* tower (the one whose `forbiddenSoakers` excludes them,
-   disambiguated by the chosen strat / clock assignment — exactly the data
-   `Rep3Roles[]` already encodes).
-2. `Resolve` returns `TargetPos = tower.Position`, `Hard = true`.
-3. The component extends `AssignedMechanic`; `AddAIHints` now emits a strong
-   `GoalSingleTarget` at the assigned tower, so the AI walks in and soaks. The
-   overlay calls the same resolver, so they can't disagree.
+1. Wrap the existing clock→role assignment in an `IMechanicResolver`: given the
+   player's slot/assignment + strat preset, return the world position of their
+   assigned `Clockspot` (the module already maps `Clockspot → Angle → WPos`).
+2. `Resolve` returns `TargetPos = clockPos`, `Hard = true`, `Activation =` the
+   mechanic's resolve time, so uptime is preserved until the player must move.
+3. The component extends `AssignedMechanic`; `AddAIHints` now emits the inverted
+   forbidden zone, so the AI walks to and holds its clock spot. The overlay calls
+   the same resolver, so the drawn arrow and the AI's destination can't disagree.
 
-Because tower mechanics are pure "this player → this point", they are the
-cleanest first proof that *each person gets their own movement*.
+This is the cleanest first proof that *each person gets their own movement*: the
+assignment data already exists and is correct; we are only adding the bridge.
 
 > A self-contained, compile-ready reference resolver
 > (`BossMod/Assignments/Examples/FixedRoleSpotsResolver.cs`) ships with Phase 1
 > so the bridge can be exercised without first rewriting a live fight; the
-> IdyllicDreamTowers migration above is the follow-up once it's validated
-> in-game.
+> StagingAssignment migration above is the follow-up once it's validated in-game.
 
 ## 8. Risks & limitations (be honest)
 
@@ -340,7 +353,7 @@ BossMod/Assignments/AssignedMechanic.cs               // base BossComponent
 BossMod/Assignments/AssignmentManager.cs              // preset load/lookup per module
 BossMod/Assignments/Examples/FixedRoleSpotsResolver.cs// compile-ready demo resolver
 Modules/Dawntrail/Savage/M12SP2Lindwurm/
-    (follow-up) IdyllicDreamTowers migration to AssignedMechanic
+    (follow-up) StagingAssignment clock/role positioning -> AssignedMechanic
 ```
 
 ## 11. Build verification note

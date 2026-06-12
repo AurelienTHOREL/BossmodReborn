@@ -3,16 +3,20 @@ namespace BossMod.Assignments;
 // The missing link: turns a resolved per-player PlayerPlan into AIHints so the
 // existing AI engine actually moves the character to the assigned spot.
 //
-// This only ADDS attraction (goal zones) and orientation restrictions. It never
-// removes or weakens the forbidden zones produced by AOE components, so a bad
-// assignment can at worst cost uptime/positioning - it can never path the player
-// into a danger zone (NavigationDecision.Build rasterizes forbidden zones before
-// goals, and the pathfinder refuses to cross them).
+// Two strategies, both safety-preserving:
+//   * Hard - emit an INVERTED forbidden zone (everywhere outside an acceptance circle
+//     is forbidden). This is the same idiom GenericTowers.AddAIHints uses to make the
+//     AI soak a tower: it composes with the AOE forbidden zones via the pathfinder, so
+//     the AI settles on a point that is simultaneously on-assignment AND safe, and can
+//     never cross a danger zone to get there.
+//   * Soft - emit an attraction gradient (goal zone) that merely biases positioning and
+//     blends with normal rotation/uptime goals.
+//
+// In neither case do we touch the AOE forbidden zones, so a bad assignment can at worst
+// cost uptime/positioning - it can never path the player into danger.
 public static class AssignmentHintBridge
 {
-    // default attractor weights. "Hard" must beat normal rotation uptime goal
-    // zones (which return ~1-4); "soft" only nudges and blends with uptime.
-    public const float DefaultHardWeight = 20f;
+    // default soft-attractor weight; small so it nudges without fighting uptime goals (~1-4).
     public const float DefaultSoftWeight = 2f;
 
     // how far away the linear attraction gradient reaches (arena-spanning)
@@ -22,11 +26,16 @@ public static class AssignmentHintBridge
     {
         if (plan.TargetPos is { } pos)
         {
-            var weight = plan.Weight ?? (plan.Hard ? DefaultHardWeight : DefaultSoftWeight);
-            // distance gradient pulls the player toward the spot from anywhere on the arena...
-            hints.GoalZones.Add(AIHints.GoalProximity(pos, AttractionRange, weight));
-            // ...plus a sharp bonus for actually being on the spot, so the pathfinder settles there.
-            hints.GoalZones.Add(AIHints.GoalSingleTarget(pos, 1f, weight));
+            if (plan.Hard)
+            {
+                // "you must stand here": forbid everything outside the acceptance circle.
+                hints.AddForbiddenZone(new SDInvertedCircle(pos, plan.Radius), plan.Activation);
+            }
+            else
+            {
+                var weight = plan.Weight ?? DefaultSoftWeight;
+                hints.GoalZones.Add(AIHints.GoalProximity(pos, AttractionRange, weight));
+            }
         }
 
         if (plan.Facing is { } face)
