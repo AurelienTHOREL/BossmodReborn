@@ -1,7 +1,15 @@
 # Autonomous Fight Resolution — Technical Design
 
-> Status: design draft (Phase 0). Target content: latest AAC savage tier
-> (M05S–M08S, with **M08S Howling Blade** as the worked example).
+> Status: design draft (Phase 0). Target content: current AAC savage tier
+> (**M09S–M12S**), with **M12S P2 (Lindwurm)** as the worked-example fight.
+>
+> Prior art in this very tier validates the direction: M12S P2 already ships a
+> `StagingAssignment<TRole>` component plus clockspot→role strategy presets
+> (`DN` / `Banana Codex`, configurable `Rep3Roles[]`) in
+> `Modules/Dawntrail/Savage/M12SP2Lindwurm/`. That code proves the pattern but
+> (a) is bespoke to one fight and (b) still resolves mostly to *forbidden zones /
+> overlay*, not to the AI's `GoalZones`. This design extracts that idea into a
+> reusable layer and adds the missing movement bridge.
 
 ## 1. Goal
 
@@ -260,26 +268,37 @@ Randomized mechanics are handled by keeping resolution per-frame and state-drive
   uptime goal zones blend in, or `Hard = true` to dominate when survival
   requires an exact spot.
 
-## 7. Worked example — converting M08S Wolves' Reign
+## 7. Worked example — M12S P2 tower soaks (Idyllic Dream)
 
-Minimal, concrete migration showing the payoff:
+The current tier already demonstrates the assignment idea; the gap is the
+movement bridge. Concrete payoff target: **M12S P2 Idyllic Dream** tower soaks
+(`Modules/Dawntrail/Savage/M12SP2Lindwurm/IdyllicDreamTowers.cs`).
 
-1. Extract `WolvesReignConeCircle.SafeSpots` body into a
-   `WolvesReignResolver : IMechanicResolver`. It already reads `jumpLoc`/`isCone`
-   (live) and role (`PartyRolesConfig`).
-2. Replace the `ReignStrategy` enum read with
-   `strat.Choice("wolves_reign", "standard")` and map `Standard/Inverse/Any` the
-   same way `GetLightparty` does today. The `M08SHowlingBladeConfig.ReignStrategy`
-   field becomes the default that seeds the preset.
-3. Resolver returns the **one** spot for the player's light-party side (today it
-   returns up to two for "Any"; for autonomy `Any` should collapse to a default
-   side, or stay advisory-only).
-4. The component extends `AssignedMechanic`, so `AddAIHints` now emits a
-   `GoalSingleTarget` at that spot. The AI walks there; `DrawArenaForeground`
-   still shows the same point because it calls the same resolver.
+Today (`IdyllicDreamTowers.cs`):
+- `IdyllicDreamElementalMeteor` builds the towers (`CreateTowers`, line ~197),
+  each with `forbiddenSoakers` (who must *not* soak).
+- It then **intentionally suppresses** `GenericTowers` AI hints (comment at
+  ~line 261) — so the AI is *not* driven to soak its assigned tower; the human
+  reads the overlay.
 
-Net change for the fight: a few dozen lines, and Wolves' Reign goes from
-"overlay that hopes you walk to the right side" to "AI takes the assigned side."
+Migration:
+1. Wrap the existing tower list in an `IMechanicResolver`: given the player's
+   slot/role, pick *their* tower (the one whose `forbiddenSoakers` excludes them,
+   disambiguated by the chosen strat / clock assignment — exactly the data
+   `Rep3Roles[]` already encodes).
+2. `Resolve` returns `TargetPos = tower.Position`, `Hard = true`.
+3. The component extends `AssignedMechanic`; `AddAIHints` now emits a strong
+   `GoalSingleTarget` at the assigned tower, so the AI walks in and soaks. The
+   overlay calls the same resolver, so they can't disagree.
+
+Because tower mechanics are pure "this player → this point", they are the
+cleanest first proof that *each person gets their own movement*.
+
+> A self-contained, compile-ready reference resolver
+> (`BossMod/Assignments/Examples/FixedRoleSpotsResolver.cs`) ships with Phase 1
+> so the bridge can be exercised without first rewriting a live fight; the
+> IdyllicDreamTowers migration above is the follow-up once it's validated
+> in-game.
 
 ## 8. Risks & limitations (be honest)
 
@@ -314,11 +333,21 @@ Net change for the fight: a few dozen lines, and Wolves' Reign goes from
 ## 10. File map (proposed for Phase 1)
 
 ```
-BossMod/Assignments/StrategyPreset.cs          // strat container + JSON
-BossMod/Assignments/IMechanicResolver.cs       // interface + PlayerPlan
-BossMod/Assignments/AssignmentHintBridge.cs    // plan -> AIHints
-BossMod/Assignments/AssignedMechanic.cs        // base BossComponent
-BossMod/Assignments/AssignmentManager.cs       // preset load/lookup per module
-Modules/Dawntrail/Savage/M08SHowlingBlade/
-    WolvesReignResolver.cs                      // worked-example resolver
+BossMod/Assignments/StrategyPreset.cs                 // strat container + JSON
+BossMod/Assignments/IMechanicResolver.cs              // interface + PlayerPlan
+BossMod/Assignments/AssignmentHintBridge.cs           // plan -> AIHints
+BossMod/Assignments/AssignedMechanic.cs               // base BossComponent
+BossMod/Assignments/AssignmentManager.cs              // preset load/lookup per module
+BossMod/Assignments/Examples/FixedRoleSpotsResolver.cs// compile-ready demo resolver
+Modules/Dawntrail/Savage/M12SP2Lindwurm/
+    (follow-up) IdyllicDreamTowers migration to AssignedMechanic
 ```
+
+## 11. Build verification note
+
+This Phase-1 code targets only stable, directly-read APIs (`AIHints`,
+`BossComponent`, `PartyRolesConfig`, `WPos`, `Angle`, `AIHints.GoalSingleTarget`).
+It was authored in an environment without a .NET toolchain, so it has **not been
+compiler-verified**; a `dotnet build` pass is required before merge. The live-fight
+migration (IdyllicDreamTowers) is deliberately left as a follow-up to be done with
+a compiler available.
