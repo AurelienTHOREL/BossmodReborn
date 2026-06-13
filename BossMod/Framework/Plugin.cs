@@ -134,8 +134,10 @@ public sealed class Plugin : IAsyncDalamudPlugin
         ActionDefinitions.Instance.UnlockCheck = QuestUnlocked; // ensure action definitions are initialized and set unlock check functor (we don't really store the quest progress in clientstate, for now at least)
 
         var qpf = (ulong)FFXIVClientStructs.FFXIV.Client.System.Framework.Framework.Instance()->PerformanceCounterFrequency;
-        _rsr = new(_dalamud);
-        _ws = new(qpf, _gameVersion);
+        _rotationDB = new(new(dalamud.ConfigDirectory.FullName + "/autorot"), new(dalamud.AssemblyLocation.DirectoryName! + "/DefaultRotationPresets.json"));
+        Assignments.AssignmentManager.Initialize(dalamud.ConfigDirectory.FullName + "/assignments");
+        _ws = new(qpf, gameVersion);
+        _rsr = new(dalamud);
         _hints = new();
         _bossmod = new(_ws);
         _zonemod = new(_ws);

@@ -3,6 +3,9 @@ namespace BossMod.Dawntrail.Savage.M12S2Lindwurm;
 [ConfigDisplay(Order = 0x160, Parent = typeof(DawntrailConfig))]
 public sealed class M12S2LindwurmConfig : ConfigNode
 {
+    [PropertyDisplay("[Experimental] Drive AI to a specific assigned tower per role/strat during Idyllic Dream (requires AI mode; off by default)")]
+    public bool ExperimentalTowerAssignment = false;
+
     // ============================================================
     // Replication 1 — Strategy Selection
     // ============================================================
