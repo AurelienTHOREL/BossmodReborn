@@ -1,8 +1,8 @@
 ﻿using Dalamud.Bindings.ImGui;
-using Dalamud.Game.Gui;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
+using Dalamud.Game.Gui;
 
 namespace BossMod;
 
@@ -45,7 +45,10 @@ sealed unsafe class DebugAction : IDisposable
         ImGui.TextUnformatted($"Anim lock: {amr->AnimationLock:f3}");
         ImGui.TextUnformatted($"Cast: {aidCastAction} / {aidCastSpell}, progress={amr->CastTimeElapsed:f3}/{amr->CastTimeTotal:f3}, target={amr->CastTargetId:X}/{Utils.Vec3String(amr->CastTargetPosition)}");
         if (pcCast != null)
+        {
             ImGui.TextUnformatted($"Cast (obj): {pcCast->IsCasting} {new ActionID((ActionType)pcCast->ActionType, pcCast->ActionId)}, progress={pcCast->CurrentCastTime:f3}/{pcCast->BaseCastTime:f3}/{pcCast->TotalCastTime:f3}");
+        }
+
         ImGui.TextUnformatted($"Combo: {aidCombo}, {_amex.ComboTimeLeft:f3}");
         ImGui.TextUnformatted($"Queue: {(amr->ActionQueued ? "active" : "inactive")}, {aidQueued} @ {(ulong)amr->QueuedTargetId:X} [{amr->QueueType}], combo={amr->QueuedComboRouteId}");
         ImGui.TextUnformatted($"GT: {aidGTAction} / {aidGTSpell}, arg={Utils.ReadField<uint>(amr, 0x94)}, targ={amr->AreaTargetingExecuteAtObject:X}/{amr->AreaTargetingExecuteAtCursor}, a0={Utils.ReadField<byte>(amr, 0xA0):X2}, bc={Utils.ReadField<byte>(amr, 0xBC):X}");
@@ -66,6 +69,22 @@ sealed unsafe class DebugAction : IDisposable
         if (ImGui.Button("Rotate 30 CCW"))
         {
             _amex.FaceDirection((_ws.Party.Player()?.Rotation ?? 0.Degrees()) + 30.Degrees());
+        }
+
+        ImGui.TextUnformatted($"Block territory transport: {_amex.BlockTerritoryTransport}");
+        ImGui.SameLine();
+        if (ImGui.Button(_amex.BlockTerritoryTransport ? "DiveEnd OFF" : "DiveEnd ON"))
+        {
+            if (_amex.BlockTerritoryTransport)
+            {
+                _amex.BlockTerritoryTransport = false;
+                _amex.ExecuteCommand(201, 0);
+            }
+            else if (_ws.Party.Player() is { } p)
+            {
+                _amex.BlockTerritoryTransport = true;
+                _amex.ExecuteCommandComplexLocation(ExecuteCommandComplexFlag.DiveEnd, new Vector3(p.PosRot.X, p.PosRot.Y, p.PosRot.Z));
+            }
         }
     }
 
@@ -101,10 +120,10 @@ sealed unsafe class DebugAction : IDisposable
             var rotationType = mnemonic != null ? Type.GetType($"BossMod.{mnemonic}Rotation")?.GetNestedType("AID") : null;
             ImGui.TextUnformatted($"Hover action: {hover.DetailKind} {hover.ActionId} (base={hover.BaseActionId}) ({mnemonic}: {rotationType?.GetEnumName(hover.ActionId)})");
 
-            string name = "";
+            var name = "";
             var type = FFXIVClientStructs.FFXIV.Client.Game.ActionType.None;
             uint unlockLink = 0;
-            if ((int)hover.DetailKind == 24) // action
+            if (hover.DetailKind == DetailKind.Action) // action
             {
                 var data = Service.LuminaRow<Lumina.Excel.Sheets.Action>(hover.ActionId);
                 name = data?.Name.ToString() ?? "";
@@ -132,6 +151,9 @@ sealed unsafe class DebugAction : IDisposable
                 ImGui.TextUnformatted($"Range: {FFXIVClientStructs.FFXIV.Client.Game.ActionManager.GetActionRange(hover.ActionId)}");
                 ImGui.TextUnformatted($"Stacks: {FFXIVClientStructs.FFXIV.Client.Game.ActionManager.GetMaxCharges(hover.ActionId, 0)}");
                 ImGui.TextUnformatted($"Adjusted ID: {mgr->GetAdjustedActionId(hover.ActionId)}");
+                ImGui.TextUnformatted($"Range: {FFXIVClientStructs.FFXIV.Client.Game.ActionManager.GetActionRange(hover.ActionId)}");
+                ImGui.TextUnformatted($"Stacks: {FFXIVClientStructs.FFXIV.Client.Game.ActionManager.GetMaxCharges(hover.ActionId, 0)}");
+                ImGui.TextUnformatted($"Adjusted ID: {mgr->GetAdjustedActionId(hover.ActionId)}");
             }
 
             if (type != FFXIVClientStructs.FFXIV.Client.Game.ActionType.None)
@@ -151,7 +173,9 @@ sealed unsafe class DebugAction : IDisposable
                 ImGui.TextUnformatted($"Recast group: {groupID}");
                 var group = mgr->GetRecastGroupDetail(groupID);
                 if (group != null)
+                {
                     ImGui.TextUnformatted($"Recast group details: active={group->IsActive}, action={group->ActionId}, elapsed={group->Elapsed:f3}, total={group->Total:f3}, cooldown={group->Total - group->Elapsed:f3}");
+                }
             }
         }
         else if (Service.GameGui.HoveredItem != 0)
@@ -171,7 +195,9 @@ sealed unsafe class DebugAction : IDisposable
             ImGui.TextUnformatted($"Recast group: {groupID}");
             var group = mgr->GetRecastGroupDetail(groupID);
             if (group != null)
+            {
                 ImGui.TextUnformatted($"Recast group details: active={group->IsActive}, action={group->ActionId}, elapsed={group->Elapsed}, total={group->Total}");
+            }
         }
         else
         {
@@ -194,7 +220,7 @@ sealed unsafe class DebugAction : IDisposable
         }
         ImGui.TextUnformatted($"Excel rows: pending={cd->DutyActionManager.PendingContentExActionRowId}, current={cd->DutyActionManager.CurrentContentExActionRowId}");
         ImGui.TextUnformatted($"Num valid slots: {cd->DutyActionManager.NumValidSlots}, actions present={cd->DutyActionManager.ActionActive[0] && cd->DutyActionManager.NumValidSlots > 0}");
-        for (int i = 0; i < cd->DutyActionManager.NumValidSlots; ++i)
+        for (var i = 0; i < cd->DutyActionManager.NumValidSlots; ++i)
         {
             var chargeText = i < 2 ? $"{cd->DutyActionManager.CurCharges[i]}/{cd->DutyActionManager.MaxCharges[i]}" : "?/?";
             ImGui.TextUnformatted($"[{i}]: action={new ActionID(ActionType.Spell, cd->DutyActionManager.ActionId[i])}, active={cd->DutyActionManager.ActionActive[i]}, charges={chargeText}");
@@ -205,7 +231,10 @@ sealed unsafe class DebugAction : IDisposable
     {
         var aa = UIState.Instance()->WeaponState.AutoAttackState.IsAutoAttacking;
         if (_autoAttack != aa)
+        {
             Service.Log($"AA state changed: {_autoAttack} -> {aa}");
+        }
+
         _autoAttack = aa;
         ImGui.TextUnformatted($"Auto-attack: {aa}");
     }
@@ -221,8 +250,13 @@ sealed unsafe class DebugAction : IDisposable
     {
         foreach (var nr in _tree.Node(tag))
         {
-            foreach (var a in Service.LuminaSheet<Lumina.Excel.Sheets.Action>()!.Where(filter))
+            foreach (var a in Service.LuminaSheet<Lumina.Excel.Sheets.Action>()!)
             {
+                if (!filter(a))
+                {
+                    continue;
+                }
+
                 _tree.LeafNode($"#{a.RowId} {a.Name}");
             }
         }

@@ -11,6 +11,7 @@ sealed class AIController(WorldState ws, ActionManagerEx amex, MovementOverride 
     public float? NaviTargetVertical;
     public bool AllowInterruptingCastByMovement;
     public bool ForceCancelCast;
+    public bool UseTeleport;
 
     private readonly ActionManagerEx _amex = amex;
     private readonly MovementOverride _movement = movement;
@@ -30,7 +31,9 @@ sealed class AIController(WorldState ws, ActionManagerEx amex, MovementOverride 
     public void SetFocusTarget(Actor? actor)
     {
         if (Service.TargetManager.FocusTarget?.EntityId != actor?.InstanceID)
+        {
             Service.TargetManager.FocusTarget = actor != null ? Service.ObjectTable.SearchById((uint)actor.InstanceID) : null;
+        }
     }
 
     public void Update(Actor? player, AIHints hints, DateTime now)

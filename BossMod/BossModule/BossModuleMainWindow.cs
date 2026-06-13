@@ -1,5 +1,5 @@
-﻿using Dalamud.Interface;
-using Dalamud.Bindings.ImGui;
+﻿using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 
 namespace BossMod;
 
@@ -8,6 +8,7 @@ public sealed class BossModuleMainWindow : UIWindow
 {
     private readonly BossModuleManager _mgr;
     private readonly ZoneModuleManager _zmm;
+    private bool _shouldRecenter;
 
     private const string _windowID = "###Boss module";
 
@@ -27,23 +28,38 @@ public sealed class BossModuleMainWindow : UIWindow
         WindowName = (showZoneModule ? $"Zone module ({_zmm.ActiveModule?.GetType().Name})" : _mgr.ActiveModule != null ? $"Boss module ({_mgr.ActiveModule.GetType().Name})" : "Loaded boss modules") + _windowID;
         Flags = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
         if (BossModuleManager.Config.TrishaMode)
+        {
             Flags |= ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoBackground;
+        }
+
         if (BossModuleManager.Config.Lock)
+        {
             Flags |= ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoInputs;
+        }
+
         ForceMainWindow = BossModuleManager.Config.TrishaMode; // NoBackground flag without ForceMainWindow works incorrectly for whatever reason
 
         if (BossModuleManager.Config.ShowWorldArrows && _mgr.ActiveModule != null && _mgr.WorldState.Party[PartyState.PlayerSlot] is var pc && pc != null)
+        {
             DrawMovementHints(_mgr.ActiveModule.CalculateMovementHintsForRaidMember(PartyState.PlayerSlot, pc), pc.PosRot.Y);
+        }
     }
 
-    public override void OnOpen()
-    {
-        Service.Log($"[BMM] Opening main window; there are {_mgr.LoadedModules.Count} loaded modules, active is {_mgr.ActiveModule?.GetType().FullName ?? "<n/a>"}; zone module is {_zmm.ActiveModule?.GetType().FullName ?? "<n/a>"}");
-    }
+    public override void OnOpen() => Service.Log($"[BMM] Opening main window; there are {_mgr.LoadedModules.Count} loaded modules, active is {_mgr.ActiveModule?.GetType().FullName ?? "<n/a>"}; zone module is {_zmm.ActiveModule?.GetType().FullName ?? "<n/a>"}");
 
-    public override void OnClose()
+    public override void OnClose() => Service.Log($"[BMM] Closing main window; there are {_mgr.LoadedModules.Count} loaded modules, active is {_mgr.ActiveModule?.GetType().FullName ?? "<n/a>"}; zone module is {_zmm.ActiveModule?.GetType().FullName ?? "<n/a>"}");
+
+    public override void PreDraw()
     {
-        Service.Log($"[BMM] Closing main window; there are {_mgr.LoadedModules.Count} loaded modules, active is {_mgr.ActiveModule?.GetType().FullName ?? "<n/a>"}; zone module is {_zmm.ActiveModule?.GetType().FullName ?? "<n/a>"}");
+        if (_shouldRecenter)
+        {
+            var viewport = ImGui.GetMainViewport();
+            var windowSize = Size ?? new Vector2(400, 400);
+            var center = viewport.Pos + viewport.Size * 0.5f;
+            var newPos = center - windowSize * 0.5f;
+            ImGui.SetNextWindowPos(newPos, ImGuiCond.Always);
+            _shouldRecenter = false;
+        }
     }
 
     public override void PostDraw()
@@ -85,7 +101,9 @@ public sealed class BossModuleMainWindow : UIWindow
                 var oidType = BossModuleRegistry.FindByOID(m.PrimaryActor.OID)?.ObjectIDType;
                 var oidName = oidType?.GetEnumName(m.PrimaryActor.OID);
                 if (ImGui.Button($"{m.GetType()} ({m.PrimaryActor.InstanceID:X} '{m.PrimaryActor.Name}' {oidName})"))
+                {
                     _mgr.ActiveModule = m;
+                }
             }
         }
     }
@@ -93,12 +111,14 @@ public sealed class BossModuleMainWindow : UIWindow
     private void DrawMovementHints(BossComponent.MovementHints? arrows, float y)
     {
         if (arrows == null || arrows.Count == 0 || Camera.Instance == null)
+        {
             return;
+        }
 
         foreach ((var start, var end, var color) in arrows)
         {
-            Vector3 start3 = start.ToVec3(y);
-            Vector3 end3 = end.ToVec3(y);
+            var start3 = start.ToVec3(y);
+            var end3 = end.ToVec3(y);
             Camera.Instance.DrawWorldLine(start3, end3, color);
             var dir = Vector3.Normalize(end3 - start3);
             var arrowStart = end3 - 0.4f * dir;
@@ -111,7 +131,14 @@ public sealed class BossModuleMainWindow : UIWindow
     private void OpenModuleConfig()
     {
         if (_mgr.ActiveModule?.Info != null)
+        {
             _ = new BossModuleConfigWindow(_mgr.ActiveModule.Info, _mgr.WorldState);
+        }
+    }
+
+    public void RecenterWindow()
+    {
+        _shouldRecenter = true;
     }
 
     private bool ShowZoneModule() => BossModuleManager.Config.ShowGlobalHints && !BossModuleManager.Config.HintsInSeparateWindow && _mgr.ActiveModule?.StateMachine.ActivePhase == null && (_zmm.ActiveModule?.WantDrawHints() ?? false);
