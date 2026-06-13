@@ -310,8 +310,25 @@ assignment data already exists and is correct; we are only adding the bridge.
 
 > A self-contained, compile-ready reference resolver
 > (`BossMod/Assignments/Examples/FixedRoleSpotsResolver.cs`) ships with Phase 1
-> so the bridge can be exercised without first rewriting a live fight; the
-> StagingAssignment migration above is the follow-up once it's validated in-game.
+> so the bridge can be exercised without first rewriting a live fight.
+
+### 7.1 First live wiring (shipped, config-gated)
+
+`Modules/Dawntrail/Savage/M12SP2Lindwurm/IdyllicDreamTowerAssignment.cs` is the
+first real fight mechanic wired through this layer. The Idyllic Dream tower soak
+is *already* AI-safe (`GenericTowers` sends the AI into some non-forbidden tower);
+this adds **which specific tower** each player takes, deterministically across all
+8 clients (shared role assignment + shared strat), so same-group players don't
+pile up. It is:
+- **additive** — it only adds a `DelegateResolver`/`AssignedMechanic` on top of the
+  existing component (read via `FindComponent`), changing nothing else;
+- **config-gated** — `M12S2LindwurmConfig.ExperimentalTowerAssignment` (default
+  **off**), so behaviour is identical to today until a user opts in;
+- registered in `M12S2LindwurmStates` alongside the tower phase (activate at
+  tower creation, deactivate when towers end).
+
+Still pending a build pass + in-game tuning before it could default on. The
+StagingAssignment clock/role migration (§7) remains the next, richer target.
 
 ## 8. Risks & limitations (be honest)
 
@@ -337,8 +354,9 @@ assignment data already exists and is correct; we are only adding the bridge.
   `StrategyPresetDatabase` (load/save/share, wired in `Plugin.cs`),
   `AssignmentValidator` + `AssignmentStatusHint` (pre-pull validation), and
   `FixedRoleSpotsResolver` demo. Not yet compiler-verified (see §11).
-- **Phase 2:** convert the first live mechanic — M12S P2 StagingAssignment
-  clock/role positioning — via `DelegateResolver` (§7); preset authoring UI.
+- **Phase 2 (started):** first live mechanic shipped — M12S P2 Idyllic Dream
+  tower assignment (§7.1), config-gated. Next: StagingAssignment clock/role
+  positioning (§7) and a preset authoring UI.
 - **Phase 3:** convert remaining M12S mechanics, then template across the tier
   (M09S–M11S).
 - **Phase 4:** multi-body resolvers; IPC preset distribution; FFLogs import

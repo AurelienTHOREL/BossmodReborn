@@ -236,13 +236,15 @@ class M12S2LindwurmStates : StateMachineBuilder
             .ActivateOnEnter<IdyllicDreamWindTower>()
             .ActivateOnEnter<IdyllicDreamHotBlooded>()
             .ActivateOnEnter<IdyllicDreamDoom>()
-            .ActivateOnEnter<LindwurmsStoneIII>();
+            .ActivateOnEnter<LindwurmsStoneIII>()
+            .ActivateOnEnter<IdyllicDreamTowerAssignment>();
 
         ComponentCondition<IdyllicDreamArena>(id + 0x232, 1.3f, a => a.State == 1, "Platforms appear");
         ComponentCondition<IdyllicDreamElementalMeteor>(id + 0x233, 3.1f, m => m.NumCasts > 0, "Towers")
             .ExecOnEnter<IdyllicDreamLindwurmsDarkII>(d => d.EnableHints = true)
         //    .ExecOnEnter<IdyllicDreamElementalMeteor>(d => d.EnableHints = true)
-            .DeactivateOnExit<IdyllicDreamElementalMeteor>();
+            .DeactivateOnExit<IdyllicDreamElementalMeteor>()
+            .DeactivateOnExit<IdyllicDreamTowerAssignment>();
 
         ComponentCondition<LindwurmsStoneIII>(id + 0x234, 5.7f, s => s.NumCasts > 0, "Delayed puddles")
             .ActivateOnEnter<LindwurmsPortent>()
