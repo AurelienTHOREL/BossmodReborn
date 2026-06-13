@@ -355,8 +355,12 @@ StagingAssignment clock/role migration (§7) remains the next, richer target.
   `AssignmentValidator` + `AssignmentStatusHint` (pre-pull validation), and
   `FixedRoleSpotsResolver` demo. Not yet compiler-verified (see §11).
 - **Phase 2 (started):** first live mechanic shipped — M12S P2 Idyllic Dream
-  tower assignment (§7.1), config-gated. Next: StagingAssignment clock/role
-  positioning (§7) and a preset authoring UI.
+  tower assignment (§7.1), config-gated. M09S Vamp Fatale tower mechanics (Hell
+  In A Cell order + Undead Deathmatch) migrated from soft `GoalSingleTarget`
+  attractors to the shared `AssignmentHintBridge` hard mode (inverted forbidden
+  zone + activation), giving uptime-aware positioning — gated by the existing
+  `EnableTowerOrder` / `EnableDeathmatch` toggles. Next: StagingAssignment
+  clock/role positioning (§7) and a preset authoring UI.
 - **Phase 3:** convert remaining M12S mechanics, then template across the tier
   (M09S–M11S).
 - **Phase 4:** multi-body resolvers; IPC preset distribution; FFLogs import

@@ -167,10 +167,13 @@ sealed class BloodyBondage(BossModule module) : Components.CastTowers(module, (u
             }
             else
             {
-                // melee sacrifices uptime if they immediately move to towers
-                // inverted forbidden zone an option to delay movement?
+                // hard, uptime-aware positioning via the shared assignment layer: forbid everywhere
+                // outside the assigned tower starting at its activation, so the AI keeps DPS uptime
+                // until it actually has to move (resolves the old "inverted forbidden zone to delay
+                // movement?" TODO) instead of being pulled off the boss immediately.
                 ref readonly var t = ref towers[index];
-                hints.GoalZones.Add(AIHints.GoalSingleTarget(t.Position, 3f, 9f));
+                Assignments.AssignmentHintBridge.Apply(
+                    new Assignments.PlayerPlan(targetPos: t.Position, radius: 3f, activation: t.Activation, hard: true), hints);
             }
         }
     }
@@ -249,7 +252,10 @@ sealed class BloodyBondageUndeadDeathmatch(BossModule module) : Components.CastT
             }
         }
 
-        hints.GoalZones.Add(AIHints.GoalSingleTarget(lpTowers[lightparty - 1].Position, 5f, 9f));
+        // hard, uptime-aware positioning into the assigned light-party tower (4-soaker)
+        ref readonly var lpt = ref lpTowers[lightparty - 1];
+        Assignments.AssignmentHintBridge.Apply(
+            new Assignments.PlayerPlan(targetPos: lpt.Position, radius: 4f, activation: lpt.Activation, hard: true), hints);
     }
 
     private int GetLightParty(int pcSlot)
