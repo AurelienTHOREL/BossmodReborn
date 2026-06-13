@@ -22,44 +22,9 @@
       },
       "TerraFX.Interop.Windows": {
         "type": "Direct",
-        "requested": "[10.0.26100, )",
-        "resolved": "10.0.26100",
-        "contentHash": "e68m5ATmbNpMO3ojSpFIvtEm+qIGRHCQRBDTH8iUZzhdRfZn8RTzkO1hZxPAqqR9rN5WXA4VCrRgnlGJ1RMqhQ=="
-      },
-      "PInvoke.Kernel32": {
-        "type": "Transitive",
-        "resolved": "0.7.124",
-        "contentHash": "3yQudp7J20HH8oW2WsGdNlcRCJAG6Slens3n4P7c6m53m0SkXLyD5ry/bXYAFXYeIym9b0LIOvrmKjmzptmkWw==",
-        "dependencies": {
-          "PInvoke.Windows.Core": "0.7.124"
-        }
-      },
-      "PInvoke.Windows.Core": {
-        "type": "Transitive",
-        "resolved": "0.7.124",
-        "contentHash": "er/PkwUBie3nXlwiKOfOxmdAj6ae8eFCLUgI5g6+9RAbyMoXMQnwAPx1atq0ZxU2LeozBdWtMQjogqcMNJhg1w=="
-      },
-      "PInvoke.Windows.ShellScalingApi": {
-        "type": "Transitive",
-        "resolved": "0.7.124",
-        "contentHash": "mVKSSuvBcJUwWvfGAfJK05AXH0QEbiDdxYqN4wjCZBeXv4ewM2/N6U2wt5uCac8RFIvsd9MAsIdTnjMLqdkNZg==",
-        "dependencies": {
-          "PInvoke.Windows.Core": "0.7.124"
-        }
-      },
-      "Validation": {
-        "type": "Transitive",
-        "resolved": "2.4.15",
-        "contentHash": "KQFOtJKKhaXzuSiZhkFaFzQEdYsA+EN/XqKZDYwsGDOrS0Nxu6qzCvNTsDF4xtkiZbBA6u7I59QnsuP2O2fZgg=="
-      },
-      "ffxivclientstructs": {
-        "type": "Project",
-        "dependencies": {
-          "InteropGenerator.Runtime": "[1.0.0, )"
-        }
-      },
-      "interopgenerator.runtime": {
-        "type": "Project"
+        "requested": "[10.0.26100.6, )",
+        "resolved": "10.0.26100.6",
+        "contentHash": "QjL9vliSWmscUv6A7bjvsryHjYnY0norqvCNcLXSdEy1VIIzMF6FiS7BuvLTBuGUeN9FY4zJbU65OsHEv7jG9A=="
       }
     }
   }

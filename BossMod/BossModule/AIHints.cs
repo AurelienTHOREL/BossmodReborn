@@ -20,7 +20,9 @@ public sealed class AIHints
             {
                 // we should never change priority if it has been set to pointless, since that means the target is dying and further actions targeting it are a waste
                 if (_priority != PriorityPointless)
+                {
                     _priority = value;
+                }
             }
         }
         //public float TimeToKill;
@@ -37,10 +39,7 @@ public sealed class AIHints
         public bool StayAtLongRange; // if set, players with ranged attacks don't bother coming closer than max range (TODO: reconsider)
         public bool Spikes; // if set, autoattacks will be prevented
 
-        public void ForcePriority(int priority)
-        {
-            _priority = priority;
-        }
+        public void ForcePriority(int priority) => _priority = priority;
     }
 
     public enum SpecialMode
@@ -130,7 +129,8 @@ public sealed class AIHints
     public readonly List<(Angle center, Angle halfWidth, DateTime activation)> ForbiddenDirections = [];
 
     // closest special movement/targeting/action mode, if any
-    public (SpecialMode mode, DateTime activation) ImminentSpecialMode;
+    // activation = when the restriction starts (e.g. bomb detonation), finish = when the restriction ends (e.g. pyretic expires)
+    public (SpecialMode mode, DateTime activation, DateTime finish) ImminentSpecialMode;
 
     // for misdirection: if forced movement is set, make real direction be within this angle
     public Angle MisdirectionThreshold;
@@ -257,7 +257,19 @@ public sealed class AIHints
         enemy?.Priority = priority;
     }
 
-    public void InteractWithOID(WorldState ws, uint oid) => InteractWithTarget = ws.Actors.FirstOrDefault(a => a.OID == oid && a.IsTargetable);
+    public void InteractWithOID(WorldState ws, uint oid)
+    {
+        foreach (var a in ws.Actors)
+        {
+            if (a.OID == oid && a.IsTargetable)
+            {
+                InteractWithTarget = a;
+                return;
+            }
+        }
+
+        InteractWithTarget = null;
+    }
     public void InteractWithOID<OID>(WorldState ws, OID oid) where OID : Enum => InteractWithOID(ws, (uint)(object)oid);
 
     public void AddForbiddenZone(ShapeDistance shapeDistance, DateTime activation = default, ulong source = default) => ForbiddenZones.Add((shapeDistance, activation, source));
@@ -265,10 +277,12 @@ public sealed class AIHints
 
     public void AddPredictedDamage(BitMask players, DateTime activation, PredictedDamageType type = PredictedDamageType.Raidwide) => PredictedDamage.Add(new(players, activation, type));
 
-    public void AddSpecialMode(SpecialMode mode, DateTime activation)
+    public void AddSpecialMode(SpecialMode mode, DateTime activation, DateTime finish = default)
     {
         if (ImminentSpecialMode == default || ImminentSpecialMode.activation > activation)
-            ImminentSpecialMode = (mode, activation);
+        {
+            ImminentSpecialMode = (mode, activation, finish);
+        }
     }
 
     public void AddForbiddenDirections(ArcList list, DateTime activation)
@@ -286,7 +300,7 @@ public sealed class AIHints
     public void Normalize()
     {
         PotentialTargets.Sort(static (b, a) => a.Priority.CompareTo(b.Priority));
-        HighestPotentialTargetPriority = Math.Max(0, PotentialTargets.FirstOrDefault()?.Priority ?? 0);
+        HighestPotentialTargetPriority = PotentialTargets.Count > 0 ? Math.Max(0, PotentialTargets[0].Priority) : 0;
         SortHelpers.SortForbiddenZonesByActivation(ForbiddenZones);
         SortHelpers.SortForbiddenDirectionsByActivation(ForbiddenDirections);
         PredictedDamage.Sort(static (a, b) => a.Activation.CompareTo(b.Activation));
@@ -346,7 +360,10 @@ public sealed class AIHints
             {
                 var e = PotentialTargets[i];
                 if (e.Priority != HighestPotentialTargetPriority)
+                {
                     break;
+                }
+
                 targets.Add(e);
             }
             return targets;
@@ -363,7 +380,10 @@ public sealed class AIHints
             {
                 var e = PotentialTargets[i];
                 if (e.Priority > Enemy.PriorityUndesirable)
+                {
                     break;
+                }
+
                 targets.Add(e);
             }
             return targets;
@@ -371,7 +391,27 @@ public sealed class AIHints
     }
 
     // TODO: verify how source/target hitboxes are accounted for by various aoe shapes
-    public int NumPriorityTargetsInAOE(Func<Enemy, bool> pred) => ForbiddenTargets.Any(pred) ? 0 : PriorityTargets.Count(pred);
+    public int NumPriorityTargetsInAOE(Func<Enemy, bool> pred)
+    {
+        for (var fi = 0; fi < ForbiddenTargets.Count; ++fi)
+        {
+            if (pred(ForbiddenTargets[fi]))
+            {
+                return 0;
+            }
+        }
+
+        var count = 0;
+        for (var pi = 0; pi < PriorityTargets.Count; ++pi)
+        {
+            if (pred(PriorityTargets[pi]))
+            {
+                ++count;
+            }
+        }
+
+        return count;
+    }
     public int NumPriorityTargetsInAOECircle(WPos origin, float radius) => NumPriorityTargetsInAOE(a => TargetInAOECircle(a.Actor, origin, radius));
     public int NumPriorityTargetsInAOECone(WPos origin, float radius, WDir direction, Angle halfAngle) => NumPriorityTargetsInAOE(a => TargetInAOECone(a.Actor, origin, radius, direction, halfAngle));
     public int NumPriorityTargetsInAOERect(WPos origin, WDir direction, float lenFront, float halfWidth, float lenBack = 0) => NumPriorityTargetsInAOE(a => TargetInAOERect(a.Actor, origin, direction, lenFront, halfWidth, lenBack));
@@ -397,7 +437,10 @@ public sealed class AIHints
     public static Func<WPos, float> GoalSingleTarget(WPos target, Angle rotation, Positional positional, float radius)
     {
         if (positional == Positional.Any)
+        {
             return GoalSingleTarget(target, radius); // more efficient implementation
+        }
+
         var effRsq = radius * radius;
         var targetDir = rotation.ToDirection();
         return p =>
@@ -405,7 +448,9 @@ public sealed class AIHints
             var offset = p - target;
             var lsq = offset.LengthSq();
             if (lsq > effRsq)
+            {
                 return 0; // out of range
+            }
             // note: this assumes that extra dot is cheaper than sqrt?..
             var front = targetDir.Dot(offset);
             var side = Math.Abs(targetDir.Dot(offset.OrthoL()));
@@ -438,7 +483,9 @@ public sealed class AIHints
             {
                 var t = targets[i];
                 if (t.pos.InCircle(p, radius + t.radius))
+                {
                     ++countInCircle;
+                }
             }
 
             return countInCircle;
@@ -462,14 +509,19 @@ public sealed class AIHints
             var toTarget = aimPoint - p;
             var lenSq = toTarget.LengthSq();
             if (lenSq > effRsq)
+            {
                 return 0;
+            }
+
             var dir = toTarget / MathF.Sqrt(lenSq);
             var countInCone = 0;
             for (var i = 0; i < count; ++i)
             {
                 var t = targets[i];
                 if (t.pos.InCircleCone(p, radius + t.radius, dir, halfAngle))
+                {
                     ++countInCone;
+                }
             }
 
             return countInCone;
@@ -494,7 +546,9 @@ public sealed class AIHints
             var toTarget = aimPoint - p;
             var lenSq = toTarget.LengthSq();
             if (lenSq > effRsq)
+            {
                 return 0;
+            }
 
             var dir = toTarget / MathF.Sqrt(lenSq);
 
@@ -502,7 +556,9 @@ public sealed class AIHints
             for (var i = 0; i < count; ++i)
             {
                 if (targets[i].pos.InRect(p, dir, lenFront, lenBack, halfWidth))
+                {
                     ++countInRect;
+                }
             }
 
             return countInRect;
@@ -513,7 +569,10 @@ public sealed class AIHints
     public static Func<WPos, float> GoalCombined(Func<WPos, float> singleTarget, Func<WPos, float> aoe, int minAOETargets)
     {
         if (minAOETargets >= 50)
+        {
             return singleTarget; // assume aoe is never efficient, so don't bother
+        }
+
         return p =>
         {
             var aoeTargets = aoe(p) - minAOETargets;
@@ -551,7 +610,9 @@ public sealed class AIHints
     {
         var enemy = FindEnemy(target);
         if (enemy == null)
+        {
             return _ => 0;
+        }
 
         var adjRange = enemy.TankDistance + target.HitboxRadius + 0.5f;
         var desiredToTarget = target.Position - destination;

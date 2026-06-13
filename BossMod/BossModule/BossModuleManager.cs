@@ -39,18 +39,25 @@ public sealed class BossModuleManager : IDisposable
         _subsciptions = new
         (
             WorldState.Actors.Added.Subscribe(ActorAdded),
+            WorldState.DirectorUpdate.Subscribe(OnDirectorUpdate),
+            WorldState.CurrentZoneChanged.Subscribe(OnZoneChange),
             Config.Modified.ExecuteAndSubscribe(ConfigChanged)
         );
 
         foreach (var a in WorldState.Actors)
+        {
             ActorAdded(a);
+        }
     }
 
     public void Dispose()
     {
         _activeModule = null;
         foreach (var m in LoadedModules)
+        {
             m.Dispose();
+        }
+
         LoadedModules.Clear();
 
         _subsciptions.Dispose();
@@ -111,10 +118,12 @@ public sealed class BossModuleManager : IDisposable
             {
                 var m = LoadedModules[i];
                 var wasActive = m.StateMachine.ActiveState != null;
+                bool allowUpdate = !_wipeInProgress && (wasActive || !LoadedModules.Any(other => other.StateMachine.ActiveState != null && other.GetType() == m.GetType()));
                 bool isActive;
                 try
                 {
-                    m.Update();
+                    if (allowUpdate)
+                        m.Update();
                     isActive = m.StateMachine.ActiveState != null;
                 }
                 catch (Exception ex)
@@ -126,7 +135,9 @@ public sealed class BossModuleManager : IDisposable
 
                 // if module was activated or deactivated, notify listeners
                 if (isActive != wasActive)
+                {
                     (isActive ? ModuleActivated : ModuleDeactivated).Fire(m);
+                }
 
                 var actor = m.PrimaryActor;
                 // unload module because it is not active and player is out of desired range
@@ -153,7 +164,10 @@ public sealed class BossModuleManager : IDisposable
                     ModuleDeactivated.Fire(m);
                     UnloadModule(i--);
                     if (!actor.IsDestroyed)
+                    {
                         ActorAdded(actor);
+                    }
+
                     continue;
                 }
 
@@ -215,13 +229,25 @@ public sealed class BossModuleManager : IDisposable
     private static int ModuleDisplayPriority(BossModule? m)
     {
         if (m == null)
+        {
             return 0;
+        }
+
         if (m.StateMachine.ActiveState != null)
+        {
             return 4;
+        }
+
         if (m.PrimaryActor.InstanceID == default)
+        {
             return 2; // demo module
+        }
+
         if (!m.PrimaryActor.IsDestroyed && !m.PrimaryActor.IsDead && m.PrimaryActor.IsTargetable)
+        {
             return 3;
+        }
+
         return 1;
     }
 
@@ -256,8 +282,46 @@ public sealed class BossModuleManager : IDisposable
     {
         var demoIndex = LoadedModules.FindIndex(m => m is DemoModule);
         if (Config.ShowDemo && demoIndex < 0)
+        {
             LoadModule(CreateDemoModule());
+        }
         else if (!Config.ShowDemo && demoIndex >= 0)
+        {
             UnloadModule(demoIndex);
+        }
+    }
+
+    private bool _wipeInProgress;
+
+    private void OnDirectorUpdate(WorldState.OpDirectorUpdate diru)
+    {
+        if (diru.UpdateID == 0x4000_0005)
+        {
+            _wipeInProgress = true;
+            ForceUnload("wipe");
+        }
+
+        // TODO: reverse these; 0005 is referenced in Dalamud as the DutyWipe op, but there are a few different IDs that are always triggered after wipe, including 000F, 0011, 0013
+        // 0006 is Duty Recommenced, but is unsuitable here because it fires after actors are recreated (at least i think it does lol i didnt check)
+        if (diru.UpdateID == 0x4000_0011)
+            _wipeInProgress = false;
+    }
+
+    private void OnZoneChange(WorldState.OpZoneChange zc)
+    {
+        ForceUnload("ZoneInit");
+    }
+
+    public void ForceUnload(string? cause = null)
+    {
+        if (cause != null)
+            Service.Log($"[BMM] Unload requested with cause: {cause}");
+
+        for (var i = LoadedModules.Count - 1; i >= 0; i--)
+        {
+            if (LoadedModules[i].StateMachine.ActiveState != null)
+                ModuleDeactivated.Fire(LoadedModules[i]);
+            UnloadModule(i);
+        }
     }
 }

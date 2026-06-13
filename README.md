@@ -1,6 +1,10 @@
+# [![](https://raw.githubusercontent.com/FFXIV-CombatReborn/RebornAssets/main/IconAssets/BMR_Icon.png)](https://github.com/FFXIV-CombatReborn/BossmodReborn)
+
 **BossmodReborn**
 
 ![Github Latest Releases](https://img.shields.io/github/downloads/FFXIV-CombatReborn/BossmodReborn/latest/total.svg?style=for-the-badge)
+![Github License](https://img.shields.io/github/license/FFXIV-CombatReborn/BossmodReborn.svg?label=License&style=for-the-badge)
+[![](https://dcbadge.limes.pink/api/server/p54TZMPnC9)](https://discord.gg/p54TZMPnC9)
 
 BossmodReborn is a community-driven fork of the original Bossmod plugin for Final Fantasy XIV. It aims to enhance your gameplay by providing real-time tactical guidance and tools that simplify complex raid mechanics. This tool is invaluable for optimizing in-game strategies, ensuring precise positioning, and enhancing overall raid performance.
 
